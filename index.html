@@ -65,7 +65,8 @@
   "use strict";
   var API = "https://hcsoctvuzjwgvxfcrwtb.supabase.co/functions/v1/portal";
   // 주소로 프로젝트를 고른다. 미리보기에서는 ?p=team1 로 바꿔 볼 수 있다.
-  var PROJECTS = { "orderless.feeler.kr": { key: "orderless", name: "오더리스" }, "team1.feeler.kr": { key: "team1", name: "남뀨" } };
+  // admin은 분석 화면을 여는 사람을 부르는 말. 학교 프로젝트에서는 "대표"라고 하지 않는다.
+  var PROJECTS = { "orderless.feeler.kr": { key: "orderless", name: "오더리스", admin: "대표" }, "team1.feeler.kr": { key: "team1", name: "남뀨", admin: "관리자" } };
   var qp = new URLSearchParams(location.search).get("p");
   var project = PROJECTS[location.hostname] || (qp === "team1" ? PROJECTS["team1.feeler.kr"] : PROJECTS["orderless.feeler.kr"]);
 
@@ -132,7 +133,7 @@
       call("login", { project: project.key, passcode: input.value, token: undefined }).then(function (d) {
         state.token = d.token; local.set("token", d.token); state.data = d; renderApp();
       }).catch(function (e) { msg.textContent = say(e); btn.disabled = false; input.select(); });
-    } }, [el("h2", { text: project.name }), el("p", { class: "sub", text: "팀 비밀번호를 넣어 주세요." }), el("label", { for: "pass", text: "비밀번호" }), input, el("div", { class: "row", style: "margin-top:14px" }, [btn, msg])]);
+    } }, [el("h2", { text: project.name }), el("p", { class: "sub", text: "팀 비밀번호를 넣어 주세요. 한 번 들어오면 이 기기에서는 30일 동안 다시 묻지 않습니다." }), el("label", { for: "pass", text: "비밀번호" }), input, el("div", { class: "row", style: "margin-top:14px" }, [btn, msg])]);
     view.appendChild(form); input.focus();
   }
 
@@ -238,7 +239,7 @@
 
   function renderMonthly() {
     view.appendChild(soon("월간 점검", "매월 첫째 주에 합니다. 준비 중입니다.", [
-      ["동료 평가", "서로의 기여와 개선점을 적습니다"], ["분기 목표 점검", "목표 3개의 진행률"], ["지출 정리", "지난달 쓴 돈과 남은 돈"], ["1:1 기록", "대표와 팀원이 따로 나눈 이야기"]]));
+      ["동료 평가", "팀원끼리 서로의 잘한 점과 개선점을 적습니다"], ["분기 목표 점검", "목표 3개의 진행률"], ["지출 정리", "지난달 쓴 돈과 남은 돈"], ["1:1 기록", "둘이 따로 나눈 이야기"]]));
   }
   function renderBoard() {
     view.appendChild(soon("보드", "준비 중입니다.", [["가져오기", "GitHub 보드의 변경을 받아 옵니다"], ["올리기", "여기서 만들거나 고친 카드를 GitHub로 보냅니다"]]));
@@ -255,7 +256,8 @@
   }
   function renderAnalysis() {
     var d = state.data;
-    if (d.isAdmin) { view.appendChild(soon("분석", "대표 전용 화면입니다. 기록이 쌓이면 주 1회 보고서를 올립니다.", [["사람별", "약속 대비 완료, 마감 준수, 막힌 일, 잘한 점과 개선점"]])); return; }
+    var A = project.admin;
+    if (d.isAdmin) { view.appendChild(soon("분석", A + " 전용 화면입니다. 기록이 쌓이면 주 1회 보고서를 올립니다.", [["사람별", "약속 대비 완료, 마감 준수, 막힌 일, 잘한 점과 개선점"]])); return; }
     var setup = !d.project.adminSet;
     var input = el("input", { type: "password", id: "adminpw", autocomplete: setup ? "new-password" : "current-password" });
     var msg = el("span", { class: "msg bad", role: "status" });
@@ -265,8 +267,8 @@
       var p = setup ? call("admin.setup", { password: input.value }).then(function () { return call("admin.login", { password: input.value }); }) : call("admin.login", { password: input.value });
       p.then(function (r) { state.token = r.token; local.set("token", r.token); return call("bootstrap"); }).then(function (nd) { state.data = nd; render(); })
         .catch(function (e) { if (e.code === "NO_SESSION") return expire(); msg.textContent = say(e); btn.disabled = false; });
-    } }, [el("h2", { text: "분석" }), el("p", { class: "sub", text: setup ? "대표만 볼 수 있는 화면입니다. 대표 전용 비밀번호를 처음 한 번 정해 주세요(8자 이상)." : "대표만 볼 수 있습니다." }),
-      el("label", { for: "adminpw", text: "대표 전용 비밀번호" }), input, el("div", { class: "row", style: "margin-top:14px" }, [btn, msg])]));
+    } }, [el("h2", { text: "분석" }), el("p", { class: "sub", text: setup ? A + "만 볼 수 있는 화면입니다. " + A + " 전용 비밀번호를 처음 한 번 정해 주세요(8자 이상)." : A + "만 볼 수 있습니다." }),
+      el("label", { for: "adminpw", text: A + " 전용 비밀번호" }), input, el("div", { class: "row", style: "margin-top:14px" }, [btn, msg])]));
   }
 
   var TABS = [
