@@ -4,18 +4,233 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>남뀨 팀 기록</title>
+<title>팀 기록</title>
 <style>
-  body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:#f4f6f9;color:#1f2a37}
-  main{text-align:center;padding:24px}
-  h1{font-size:28px;margin:0 0 8px}
-  p{margin:0;color:#5b6570}
+  :root{--bg:#f4f6f9;--card:#fff;--ink:#1c2733;--muted:#5b6570;--line:#dfe4ea;--accent:#1f3a5f;--accent-soft:#e9eef5;--ok:#1d7a4f;--warn:#9a5b00;--warn-bg:#fff6e0}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif}
+  header{background:var(--accent);color:#fff;padding:18px 16px 14px}
+  header .wrap,main,nav .wrap,.banner .wrap{max-width:860px;margin:0 auto}
+  header h1{margin:0;font-size:22px;letter-spacing:-.2px}
+  header p{margin:2px 0 0;font-size:13px;opacity:.85}
+  .banner{background:var(--warn-bg);color:var(--warn);font-size:13px;padding:8px 16px;border-bottom:1px solid #f0dfb0}
+  nav{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+  nav .wrap{display:flex;gap:2px;overflow-x:auto;padding:0 8px;scrollbar-width:none}
+  nav .wrap::-webkit-scrollbar{display:none}
+  nav button{border:0;background:none;padding:13px 14px;font:inherit;font-size:15px;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap;cursor:pointer}
+  nav button[aria-selected="true"]{color:var(--accent);font-weight:700;border-bottom-color:var(--accent)}
+  main{padding:16px 16px 60px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+  .card h2{margin:0 0 4px;font-size:17px}
+  .card .sub{margin:0 0 12px;color:var(--muted);font-size:13px}
+  label{display:block;font-weight:600;font-size:14px;margin:14px 0 5px}
+  label small{font-weight:400;color:var(--muted)}
+  textarea,input[type=text],select{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 11px;font:inherit;background:#fff;color:var(--ink)}
+  textarea{min-height:62px;resize:vertical}
+  textarea:focus,input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .btn{border:0;border-radius:8px;background:var(--accent);color:#fff;font:inherit;font-weight:700;padding:11px 18px;cursor:pointer}
+  .btn.ghost{background:var(--accent-soft);color:var(--accent)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .saved{color:var(--ok);font-size:14px}
+  .entry{border-top:1px solid var(--line);padding:12px 0}
+  .entry:first-of-type{border-top:0;padding-top:4px}
+  .entry .who{font-weight:700}
+  .entry .meta{color:var(--muted);font-size:13px;margin-left:6px}
+  .entry dl{margin:8px 0 0;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:15px}
+  .entry dt{color:var(--muted);white-space:nowrap}
+  .entry dd{margin:0;white-space:pre-wrap;word-break:break-word}
+  .pill{display:inline-block;background:var(--accent-soft);color:var(--accent);border-radius:999px;font-size:12px;padding:2px 9px;margin-left:6px}
+  .empty{color:var(--muted);font-size:15px;padding:6px 0}
+  .soon li{margin:4px 0}
+  .scale{display:flex;gap:4px;flex-wrap:wrap}
+  .scale button{width:36px;height:36px;border-radius:8px;border:1px solid var(--line);background:#fff;font:inherit;cursor:pointer}
+  .scale button[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700}
+  @media (max-width:520px){.entry dl{grid-template-columns:1fr}.entry dt{margin-top:6px}}
 </style>
 </head>
 <body>
-<main>
-  <h1>남뀨 팀 기록</h1>
-  <p>준비 중입니다.</p>
-</main>
+<header><div class="wrap"><h1 id="title">팀 기록</h1><p id="today"></p></div></header>
+<div class="banner"><div class="wrap">시험판입니다. 아직 서버에 연결되지 않아 기록이 이 기기에만 저장됩니다.</div></div>
+<nav><div class="wrap" id="tabs" role="tablist"></div></nav>
+<main id="view"></main>
+<script>
+(function () {
+  "use strict";
+  // 주소로 프로젝트를 고른다. 미리보기에서는 ?p=team1 로 바꿔 볼 수 있다.
+  var PROJECTS = {
+    "orderless.feeler.kr": { key: "orderless", name: "오더리스" },
+    "team1.feeler.kr": { key: "team1", name: "남뀨" }
+  };
+  var qp = new URLSearchParams(location.search).get("p");
+  var project = PROJECTS[location.hostname] || (qp === "team1" ? PROJECTS["team1.feeler.kr"] : PROJECTS["orderless.feeler.kr"]);
+
+  // 하루 기록 양식. key는 저장 이름, required는 필수 여부.
+  var FIELDS = [
+    { key: "did", label: "오늘 한 일", hint: "끝낸 것 위주로", required: true },
+    { key: "why", label: "왜 했나", hint: "어떤 목표나 카드를 위한 일인지" },
+    { key: "good", label: "잘된 것", hint: "" },
+    { key: "stuck", label: "막힌 것, 아쉬운 것", hint: "도움이 필요하면 누구에게 무엇이 필요한지" },
+    { key: "next", label: "내일 가장 먼저 할 일", hint: "한 가지만", required: true },
+    { key: "value", label: "팀과 고객에게 준 가치", hint: "" },
+    { key: "learned", label: "배운 것, 남길 말", hint: "" }
+  ];
+
+  // 저장 계층. 지금은 이 기기(localStorage)에만 저장하고, 서버가 준비되면 이 객체만 바꾼다.
+  var store = {
+    k: function (name) { return "teamlog:" + project.key + ":" + name; },
+    get: function (name, fallback) { try { var v = localStorage.getItem(this.k(name)); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; } },
+    set: function (name, value) { try { localStorage.setItem(this.k(name), JSON.stringify(value)); return true; } catch (e) { return false; } },
+    logs: function () { return this.get("logs", []); },
+    saveLog: function (log) {
+      var all = this.logs().filter(function (x) { return !(x.date === log.date && x.author === log.author); });
+      all.push(log);
+      return this.set("logs", all);
+    }
+  };
+
+  function el(tag, attrs, children) {
+    var n = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (a) {
+      if (a === "text") n.textContent = attrs[a];
+      else if (a.slice(0, 2) === "on") n.addEventListener(a.slice(2), attrs[a]);
+      else n.setAttribute(a, attrs[a]);
+    });
+    (children || []).forEach(function (c) { if (c) n.appendChild(c); });
+    return n;
+  }
+  function ymd(d) { var z = function (x) { return (x < 10 ? "0" : "") + x; }; return d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate()); }
+  var TODAY = ymd(new Date());
+  var DAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+  document.title = project.name + " 팀 기록";
+  document.getElementById("title").textContent = project.name + " 팀 기록";
+  document.getElementById("today").textContent = TODAY + " (" + DAYS[new Date().getDay()] + ")";
+
+  var TABS = [
+    { id: "today", name: "오늘" },
+    { id: "history", name: "지난 기록" },
+    { id: "board", name: "보드" },
+    { id: "calendar", name: "일정" },
+    { id: "meetings", name: "회의록" },
+    { id: "analysis", name: "분석" }
+  ];
+  var current = "today";
+  var view = document.getElementById("view");
+  var tabs = document.getElementById("tabs");
+
+  function renderTabs() {
+    tabs.textContent = "";
+    TABS.forEach(function (t) {
+      tabs.appendChild(el("button", { role: "tab", "aria-selected": String(t.id === current), text: t.name, onclick: function () { current = t.id; render(); } }));
+    });
+  }
+
+  function entryNode(log, showDate) {
+    var dl = el("dl");
+    FIELDS.forEach(function (f) {
+      if (!log[f.key]) return;
+      dl.appendChild(el("dt", { text: f.label }));
+      dl.appendChild(el("dd", { text: log[f.key] }));
+    });
+    var head = el("div", {}, [
+      el("span", { class: "who", text: log.author }),
+      showDate ? el("span", { class: "meta", text: log.date }) : null,
+      log.energy ? el("span", { class: "pill", text: "컨디션 " + log.energy + "/10" }) : null
+    ]);
+    return el("div", { class: "entry" }, [head, dl]);
+  }
+
+  function renderToday() {
+    var me = store.get("me", "");
+    var mine = store.logs().filter(function (x) { return x.date === TODAY && x.author === me; })[0] || {};
+    var energy = mine.energy || 0;
+
+    var nameInput = el("input", { type: "text", id: "me", value: me, placeholder: "이름", autocomplete: "name" });
+    var form = el("div", { class: "card" }, [
+      el("h2", { text: "오늘의 기록" }),
+      el("p", { class: "sub", text: "하루에 한 번, 3분이면 됩니다. 같은 날 다시 저장하면 덮어씁니다." }),
+      el("label", { for: "me", text: "이름" }), nameInput
+    ]);
+    var inputs = {};
+    FIELDS.forEach(function (f) {
+      var lab = el("label", { for: "f-" + f.key, text: f.label + (f.required ? " *" : "") });
+      if (f.hint) lab.appendChild(el("small", { text: "  " + f.hint }));
+      var ta = el("textarea", { id: "f-" + f.key });
+      ta.value = mine[f.key] || "";
+      inputs[f.key] = ta;
+      form.appendChild(lab); form.appendChild(ta);
+    });
+    form.appendChild(el("label", { text: "컨디션 (1~10)" }));
+    var scale = el("div", { class: "scale", role: "group", "aria-label": "컨디션" });
+    for (var i = 1; i <= 10; i++) (function (n) {
+      scale.appendChild(el("button", { type: "button", "aria-pressed": String(n === energy), text: String(n), onclick: function () {
+        energy = n; Array.prototype.forEach.call(scale.children, function (b, idx) { b.setAttribute("aria-pressed", String(idx + 1 === n)); });
+      } }));
+    })(i);
+    form.appendChild(scale);
+
+    var msg = el("span", { class: "saved", role: "status" });
+    var save = el("button", { class: "btn", type: "button", text: "저장", onclick: function () {
+      var author = nameInput.value.trim();
+      if (!author) { msg.textContent = "이름을 적어 주세요."; nameInput.focus(); return; }
+      var log = { date: TODAY, author: author, energy: energy, savedAt: new Date().toISOString() };
+      var missing = null;
+      FIELDS.forEach(function (f) { log[f.key] = inputs[f.key].value.trim(); if (f.required && !log[f.key] && !missing) missing = f; });
+      if (missing) { msg.textContent = "'" + missing.label + "'을 적어 주세요."; inputs[missing.key].focus(); return; }
+      store.set("me", author);
+      msg.textContent = store.saveLog(log) ? "저장했습니다." : "저장하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.";
+      renderFeed();
+    } });
+    form.appendChild(el("div", { class: "row", style: "margin-top:16px" }, [save, msg]));
+
+    var feed = el("div", { class: "card" });
+    function renderFeed() {
+      feed.textContent = "";
+      feed.appendChild(el("h2", { text: "오늘 팀 기록" }));
+      var todays = store.logs().filter(function (x) { return x.date === TODAY; });
+      if (!todays.length) feed.appendChild(el("p", { class: "empty", text: "아직 오늘 기록이 없습니다." }));
+      todays.forEach(function (x) { feed.appendChild(entryNode(x, false)); });
+    }
+    renderFeed();
+    view.appendChild(form); view.appendChild(feed);
+  }
+
+  function renderHistory() {
+    var logs = store.logs().slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+    var people = logs.map(function (x) { return x.author; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+    var who = "";
+    var list = el("div");
+    var sel = el("select", { "aria-label": "사람 고르기", onchange: function () { who = sel.value; draw(); } }, [el("option", { value: "", text: "전체" })]);
+    people.forEach(function (p) { sel.appendChild(el("option", { value: p, text: p })); });
+    function draw() {
+      list.textContent = "";
+      var shown = logs.filter(function (x) { return !who || x.author === who; });
+      if (!shown.length) list.appendChild(el("p", { class: "empty", text: "기록이 없습니다." }));
+      shown.forEach(function (x) { list.appendChild(entryNode(x, true)); });
+    }
+    draw();
+    view.appendChild(el("div", { class: "card" }, [el("h2", { text: "지난 기록" }), el("p", { class: "sub", text: "최근 날짜부터 보여 줍니다." }), sel, list]));
+  }
+
+  function renderSoon(title, lines) {
+    var ul = el("ul", { class: "soon" });
+    lines.forEach(function (t) { ul.appendChild(el("li", { text: t })); });
+    view.appendChild(el("div", { class: "card" }, [el("h2", { text: title }), el("p", { class: "sub", text: "준비 중입니다." }), ul]));
+  }
+
+  function render() {
+    renderTabs();
+    view.textContent = "";
+    if (current === "today") renderToday();
+    else if (current === "history") renderHistory();
+    else if (current === "board") renderSoon("보드", ["GitHub 보드의 카드, 담당, 마감, 상태를 보여 줍니다.", "'가져오기'를 누르면 GitHub의 변경을 받아 오고, '올리기'를 누르면 여기서 고친 내용을 GitHub로 보냅니다."]);
+    else if (current === "calendar") renderSoon("일정", ["팀 일정과 보드의 마감일을 달력으로 보여 줍니다.", "구글 캘린더에서도 볼 수 있게 구독 주소를 제공합니다."]);
+    else if (current === "meetings") renderSoon("회의록", ["Notion AI가 정리한 회의 요약, 결정, 할 일을 가져옵니다."]);
+    else renderSoon("분석", ["대표만 볼 수 있습니다.", "기록이 쌓이면 주 1회 보고서를 올립니다."]);
+  }
+  render();
+})();
+</script>
 </body>
 </html>
