@@ -28,7 +28,7 @@
   .note{background:var(--note-bg);color:var(--note);border:1px solid #f0dfb0;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:14px}
   label{display:block;font-weight:600;font-size:14px;margin:14px 0 5px}
   label small{font-weight:400;color:var(--muted)}
-  textarea,input[type=text],input[type=password],select{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 11px;font:inherit;background:#fff;color:var(--ink)}
+  textarea,input[type=text],input[type=password],input[type=date],select{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 11px;font:inherit;background:#fff;color:var(--ink)}
   textarea{min-height:62px;resize:vertical}
   textarea:focus,input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -56,6 +56,33 @@
   .seg{display:flex;gap:6px;margin-bottom:6px}
   .seg button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;padding:9px;font:inherit;cursor:pointer;color:var(--muted)}
   .seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:700}
+  main.wide{max-width:1180px}
+  .btn.ghost{background:#fff;color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+  .btn.small{padding:8px 13px;font-size:14px}
+  .cols{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));gap:10px;align-items:start}
+  .col{background:#e9edf2;border-radius:12px;padding:8px}
+  .col h3{margin:3px 5px 9px;font-size:14px;display:flex;justify-content:space-between}
+  .col h3 span{color:var(--muted);font-weight:400}
+  .col .empty{font-size:13px;padding:2px 5px 6px}
+  .tile{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 11px;margin-bottom:8px;font:inherit;color:inherit;cursor:pointer}
+  .tile:last-child{margin-bottom:0}
+  .tile:hover,.tile:focus-visible{border-color:var(--accent);outline:0}
+  .tile b{display:block;font-size:14.5px;line-height:1.4;overflow-wrap:anywhere}
+  .chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+  .chip{font-size:12px;border-radius:999px;padding:1px 8px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+  .chip.plain{background:#eceff3;color:var(--muted)}
+  .chip.late,.chip.clash{background:#fde8e6;color:var(--bad)}
+  .chip.wait{background:var(--note-bg);color:var(--note)}
+  .chip.clash{font-weight:700}
+  .only-narrow{display:none}
+  .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 10px}
+  dialog{border:0;border-radius:14px;padding:0;width:min(580px,calc(100vw - 24px));max-height:calc(100vh - 24px);color:var(--ink);background:#fff}
+  dialog::backdrop{background:rgba(20,30,45,.45)}
+  dialog form{padding:18px}
+  dialog h2{margin:0 0 4px;font-size:18px}
+  .log{margin:6px 0 0;padding:0;list-style:none;font-size:13px;color:var(--muted)}
+  .log li{padding:3px 0;border-top:1px solid var(--line)}
+  @media (max-width:760px){.cols{grid-template-columns:1fr}.col{display:none}.col.active{display:block}.only-narrow{display:flex}.grid3{grid-template-columns:1fr}}
   @media (max-width:520px){.entry dl{grid-template-columns:1fr}.entry dt{margin-top:6px}}
 </style>
 </head>
@@ -90,7 +117,9 @@
     WRONG_PASSCODE: "비밀번호가 맞지 않습니다.", WRONG_PASSWORD: "이름이나 비밀번호가 맞지 않습니다.", WRONG_SITE: "이 주소에서는 들어갈 수 없는 프로젝트입니다.",
     LOCKED: "여러 번 틀려서 잠겼습니다. 15분 뒤에 다시 해 주세요.", REQUIRED: "필수 칸을 적어 주세요.", NAME_REQUIRED: "이름을 적어 주세요.",
     NAME_TAKEN: "이미 가입된 이름입니다. '이미 가입했어요'에서 들어와 주세요.", TOO_SHORT: "비밀번호는 6자 이상으로 정해 주세요.", TOO_SHORT_ADMIN: "8자 이상으로 정해 주세요.",
-    ALREADY_SET: "이미 정해져 있습니다.", NETWORK: "연결하지 못했습니다. 잠시 뒤에 다시 해 주세요."
+    ALREADY_SET: "이미 정해져 있습니다.", GITHUB_NOT_READY: "GitHub 연결이 아직 준비되지 않았습니다.", PULL_FIRST: "먼저 '가져오기'를 눌러 주세요.",
+    GITHUB_FAILED: "GitHub와 연결하지 못했습니다. 잠시 뒤에 다시 해 주세요.", BAD_OPTION: "보드에 없는 선택지입니다. '가져오기'를 한 뒤 다시 골라 주세요.",
+    BAD_DATE: "마감 날짜를 다시 골라 주세요.", NOT_FOUND: "카드를 찾지 못했습니다. '가져오기'를 눌러 주세요.", NETWORK: "연결하지 못했습니다. 잠시 뒤에 다시 해 주세요."
   };
   var DAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -130,7 +159,7 @@
 
   // ---------- 1. 팀 비밀번호 ----------
   function renderTeamGate(message) {
-    nav.hidden = true; logoutBtn.hidden = true; view.textContent = ""; headerLine();
+    nav.hidden = true; logoutBtn.hidden = true; view.textContent = ""; view.className = ""; headerLine();
     var input = el("input", { type: "password", id: "pass", inputmode: "numeric", autocomplete: "off", placeholder: "팀 비밀번호" });
     var msg = el("span", { class: "msg bad", role: "status", text: message || "" });
     var btn = el("button", { class: "btn", type: "submit", text: "들어가기" });
@@ -269,8 +298,130 @@
     view.appendChild(soon("월간 점검", "매월 첫째 주에 합니다.", [
       ["동료 평가", "팀원끼리 서로의 잘한 점과 개선점을 적습니다", "잠김"], ["분기 목표 점검", "목표 3개의 진행률", "준비 중"], ["지출 정리", "지난달 쓴 돈과 남은 돈", "준비 중"], ["1:1 기록", "둘이 따로 나눈 이야기", "준비 중"]]));
   }
+  // ---------- 보드: GitHub와 버튼으로 주고받는다 ----------
+  var EVENT = { created: "카드 만듦", title: "제목", status: "상태", area: "영역", owner: "담당", due: "마감", pushed: "GitHub로 올림", removed: "GitHub에서 없어짐", resolved: "양쪽 변경 정리" };
+  function when(iso) { var t = new Date(iso), p = function (n) { return (n < 10 ? "0" : "") + n; }; return p(t.getMonth() + 1) + "-" + p(t.getDate()) + " " + p(t.getHours()) + ":" + p(t.getMinutes()); }
   function renderBoard() {
-    view.appendChild(soon("보드", state.data.githubReady ? "GitHub 연결 준비가 됐습니다. 화면을 만드는 중입니다." : "준비 중입니다.", [["가져오기", "GitHub 보드의 변경을 받아 옵니다"], ["올리기", "여기서 만들거나 고친 카드를 GitHub로 보냅니다"]]));
+    var d = state.data, B = null, busy = false, who = local.get("boardWho") || "", active = local.get("boardCol") || "";
+    var top = el("div", { class: "card" }), body = el("div"), msg = el("span", { class: "msg", role: "status" });
+    view.appendChild(top); view.appendChild(body);
+    function fail(e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.className = "msg bad"; msg.textContent = say(e); }
+    function told(r) {
+      var x = r.report; if (!x) return "";
+      if (x.kind === "pull") return "가져왔습니다. 새 카드 " + x.added + "장, 바뀐 카드 " + x.updated + "장" + (x.removed ? ", 없어진 카드 " + x.removed + "장" : "") + (x.conflicts ? ". 양쪽에서 바뀐 카드 " + x.conflicts + "장은 눌러서 어느 쪽을 남길지 골라 주세요." : ".");
+      return "올렸습니다. " + x.pushed + "장" + (x.created ? "(새 카드 " + x.created + "장)" : "") + (x.conflicts ? ". " + x.conflicts + "장은 GitHub에서도 바뀌어서 올리지 않았습니다. 눌러서 골라 주세요." : ".") + (x.errors.length ? " 올리지 못한 카드: " + x.errors.join(" / ") : "");
+    }
+    function run(action, payload) {
+      busy = true; draw(); msg.className = "msg"; msg.textContent = "잠시만요.";
+      return call(action, payload).then(function (r) { B = r; busy = false; draw(); msg.className = "msg"; msg.textContent = told(r); }).catch(function (e) { busy = false; draw(); fail(e); });
+    }
+
+    function draw() {
+      top.textContent = ""; body.textContent = "";
+      var o = B ? B.options : { status: [], area: [], owner: [] };
+      var bar = el("div", { class: "row" }, [
+        el("button", { class: "btn small", type: "button", text: "가져오기", disabled: busy || !B || !B.ready, onclick: function () { run("board.pull"); } }),
+        el("button", { class: "btn small", type: "button", text: "올리기" + (B && B.dirty ? " (" + B.dirty + ")" : ""), disabled: busy || !B || !B.dirty, onclick: function () { run("board.push"); } }),
+        el("button", { class: "btn small ghost", type: "button", text: "새 카드", disabled: busy || !o.status.length, onclick: function () { edit(null); } }), msg]);
+      top.appendChild(el("h2", { text: "보드" }));
+      top.appendChild(el("p", { class: "sub", text: "GitHub 보드와 버튼으로 주고받습니다. 가져오기는 GitHub의 변경을 받아 오고, 올리기는 여기서 만들거나 고친 카드를 보냅니다." + (B && B.pulledAt ? " 마지막으로 가져온 때: " + when(B.pulledAt) : "") }));
+      top.appendChild(bar);
+      if (!B) { body.appendChild(el("p", { class: "empty", text: "불러오는 중입니다." })); return; }
+      if (!B.ready) { body.appendChild(el("div", { class: "note", text: "GitHub 연결이 아직 준비되지 않았습니다." })); return; }
+      if (!o.status.length) { body.appendChild(el("div", { class: "note", text: "아직 가져온 적이 없습니다. '가져오기'를 눌러 GitHub 보드를 받아 오세요." })); return; }
+      if (B.conflicts) body.appendChild(el("div", { class: "note", text: "양쪽에서 바뀐 카드가 " + B.conflicts + "장 있습니다. 빨간 표시가 있는 카드를 눌러 어느 쪽을 남길지 골라 주세요." }));
+
+      if (o.owner.length) {
+        var sel = el("select", { "aria-label": "담당으로 걸러 보기", style: "max-width:200px;margin-top:12px", onchange: function () { who = sel.value; local.set("boardWho", who || null); draw(); } }, [el("option", { value: "", text: "담당: 전체" })]);
+        o.owner.forEach(function (n) { sel.appendChild(el("option", { value: n, text: "담당: " + n })); });
+        sel.value = who; top.appendChild(sel);
+      }
+      var items = B.items.filter(function (i) { return !who || i.owner === who; });
+      var names = o.status.slice();
+      if (items.some(function (i) { return names.indexOf(i.status) < 0; })) names.push("");
+      if (names.indexOf(active) < 0) active = names[0];
+      var count = function (s) { return items.filter(function (i) { return (names.indexOf(i.status) < 0 ? "" : i.status) === s; }).length; };
+      var seg = el("div", { class: "seg only-narrow" });
+      names.forEach(function (s) { seg.appendChild(el("button", { type: "button", "aria-pressed": String(s === active), text: (s || "상태 없음") + " " + count(s), onclick: function () { active = s; local.set("boardCol", s || null); draw(); } })); });
+      body.appendChild(seg);
+      var cols = el("div", { class: "cols", style: "--n:" + names.length });
+      names.forEach(function (s) {
+        var mine = items.filter(function (i) { return (names.indexOf(i.status) < 0 ? "" : i.status) === s; });
+        var col = el("div", { class: "col" + (s === active ? " active" : "") }, [el("h3", {}, [document.createTextNode(s || "상태 없음"), el("span", { text: String(mine.length) })])]);
+        if (!mine.length) col.appendChild(el("p", { class: "empty", text: "없음" }));
+        mine.forEach(function (i) { col.appendChild(tile(i)); });
+        cols.appendChild(col);
+      });
+      body.appendChild(cols);
+    }
+
+    function tile(i) {
+      var chips = el("div", { class: "chips" });
+      if (i.conflict) chips.appendChild(el("span", { class: "chip clash", text: "양쪽에서 바뀜" }));
+      else if (i.dirty) chips.appendChild(el("span", { class: "chip wait", text: "올리기 전" }));
+      if (i.owner) chips.appendChild(el("span", { class: "chip", text: i.owner }));
+      if (i.area) chips.appendChild(el("span", { class: "chip plain", text: i.area }));
+      if (i.due) chips.appendChild(el("span", { class: "chip " + (i.due < d.today && i.status !== "완료" ? "late" : "plain"), text: "마감 " + i.due.slice(5) }));
+      if (i.content_type !== "DraftIssue") chips.appendChild(el("span", { class: "chip plain", text: i.content_type === "PullRequest" ? "PR" : "이슈" }));
+      return el("button", { class: "tile", type: "button", onclick: function () { edit(i); } }, [el("b", { text: i.title }), chips]);
+    }
+
+    function edit(item) {
+      var o = B.options, fresh = !item, draft = fresh || item.content_type === "DraftIssue", status = fresh ? o.status[0] : item.status;
+      var dlg = el("dialog", { "aria-label": fresh ? "새 카드" : "카드 고치기" });
+      var title = el("input", { type: "text", id: "c-title", maxlength: "200", disabled: !draft }); title.value = fresh ? "" : item.title;
+      var text = el("textarea", { id: "c-body", style: "min-height:110px", disabled: !draft }); text.value = fresh ? "" : item.body;
+      var seg = el("div", { class: "seg", role: "group", "aria-label": "상태" });
+      function drawSeg() { seg.textContent = ""; o.status.forEach(function (s) { seg.appendChild(el("button", { type: "button", "aria-pressed": String(status === s), text: s, onclick: function () { status = s; drawSeg(); } })); }); }
+      drawSeg();
+      function pick(id, label, list, cur) {
+        var s = el("select", { id: id }, [el("option", { value: "", text: "없음" })]);
+        list.forEach(function (n) { s.appendChild(el("option", { value: n, text: n })); }); s.value = cur || "";
+        return { input: s, node: el("div", {}, [el("label", { for: id, text: label }), s]) };
+      }
+      var owner = o.owner.length ? pick("c-owner", "담당", o.owner, fresh ? (o.owner.indexOf(d.me) >= 0 ? d.me : "") : item.owner) : null;
+      var area = o.area.length ? pick("c-area", "영역", o.area, fresh ? "" : item.area) : null;
+      var due = null, dueNode = null;
+      if (o.hasDue) { due = el("input", { type: "date", id: "c-due" }); due.value = (item && item.due) || ""; dueNode = el("div", {}, [el("label", { for: "c-due", text: "마감" }), due]); }
+      var note = el("span", { class: "msg bad", role: "status" });
+      var save = el("button", { class: "btn", type: "submit", text: "저장" });
+      function done(r, textAfter) { B = r; dlg.close(); draw(); msg.className = "msg"; msg.textContent = textAfter; }
+      function oops(e) { if (expired(e)) { dlg.close(); return leave("다시 들어와 주세요."); } note.textContent = say(e); save.disabled = false; }
+      var form = el("form", { onsubmit: function (ev) {
+        ev.preventDefault(); note.textContent = "";
+        if (draft && !title.value.trim()) { note.textContent = "제목을 적어 주세요."; title.focus(); return; }
+        save.disabled = true;
+        call("board.save", { id: fresh ? null : item.id, title: title.value, body: text.value, status: status, owner: owner ? owner.input.value : (fresh ? "" : item.owner), area: area ? area.input.value : (fresh ? "" : item.area), due: due ? due.value : (fresh ? "" : item.due) })
+          .then(function (r) { done(r, "저장했습니다. '올리기'를 누르면 GitHub로 갑니다."); }).catch(oops);
+      } }, [el("h2", { text: fresh ? "새 카드" : "카드 고치기" }), el("p", { class: "sub", text: "저장하면 이 사이트에 먼저 남고, '올리기'를 눌러야 GitHub로 갑니다." })]);
+      if (item && item.conflict) {
+        form.appendChild(el("div", { class: "note" }, [el("div", { text: "이 카드는 여기서도, GitHub에서도 바뀌었습니다. 어느 쪽을 남길지 골라 주세요." }), el("div", { class: "row", style: "margin-top:8px" }, [
+          el("button", { class: "btn small", type: "button", text: "여기서 고친 내용 남기기", onclick: function () { call("board.resolve", { id: item.id, keep: "mine" }).then(function (r) { done(r, "여기서 고친 내용을 남겼습니다. '올리기'를 눌러 주세요."); }).catch(oops); } }),
+          el("button", { class: "btn small ghost", type: "button", text: "GitHub 내용으로 바꾸기", onclick: function () { call("board.resolve", { id: item.id, keep: "remote" }).then(function (r) { done(r, "GitHub 내용으로 바꿨습니다."); }).catch(oops); } })])]));
+      }
+      form.appendChild(el("label", { for: "c-title", text: "제목 *" })); form.appendChild(title);
+      form.appendChild(el("label", { text: "상태" })); form.appendChild(seg);
+      form.appendChild(el("div", { class: "grid3" }, [owner && owner.node, area && area.node, dueNode]));
+      form.appendChild(el("label", { for: "c-body", text: "설명" })); form.appendChild(text);
+      if (!draft) form.appendChild(el("p", { class: "sub", style: "margin-top:8px" }, [document.createTextNode("이슈와 PR의 제목과 설명은 GitHub에서 고칩니다. "), item.url ? el("a", { href: item.url, target: "_blank", rel: "noopener", text: "GitHub에서 열기" }) : null]));
+      form.appendChild(el("div", { class: "row", style: "margin-top:16px" }, [save, el("button", { class: "btn ghost", type: "button", text: "닫기", onclick: function () { dlg.close(); } }), note]));
+      if (item) {
+        var log = el("ul", { class: "log" });
+        form.appendChild(el("label", { text: "바뀐 기록" })); form.appendChild(log);
+        call("board.events", { id: item.id }).then(function (r) {
+          if (!r.events.length) log.appendChild(el("li", { text: "기록이 없습니다." }));
+          r.events.forEach(function (x) {
+            var what = EVENT[x.field] || x.field, change = x.field === "created" || x.field === "pushed" || x.field === "removed" ? "" : x.field === "resolved" ? ": " + (x.new_value || "") : ": " + (x.old_value || "없음") + " → " + (x.new_value || "없음");
+            log.appendChild(el("li", { text: when(x.at) + "  " + (x.actor === "github" ? "GitHub" : x.actor) + "  " + what + change }));
+          });
+        }).catch(function () { log.appendChild(el("li", { text: "기록을 불러오지 못했습니다." })); });
+      }
+      dlg.appendChild(form); dlg.addEventListener("close", function () { dlg.remove(); });
+      document.body.appendChild(dlg); dlg.showModal(); if (draft) title.focus();
+    }
+
+    draw();
+    call("board.list").then(function (r) { B = r; draw(); }).catch(function (e) { B = { ready: false, options: { status: [], area: [], owner: [] }, items: [] }; draw(); fail(e); });
   }
   function renderCalendar() {
     var url = state.data.project.calendarUrl;
@@ -312,7 +463,7 @@
       tabsEl.appendChild(b);
     });
   }
-  function render() { renderTabs(); view.textContent = ""; TABS.filter(function (t) { return t.id === state.tab; })[0].fn(); }
+  function render() { renderTabs(); view.textContent = ""; view.className = state.tab === "board" ? "wide" : ""; TABS.filter(function (t) { return t.id === state.tab; })[0].fn(); }
   function route() {
     if (!state.data) return renderTeamGate();
     if (state.data.needMember) return renderMemberGate();
