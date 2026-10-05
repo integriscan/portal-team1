@@ -14,7 +14,7 @@
   .wrap,main{max-width:860px;margin:0 auto}
   header h1{margin:0;font-size:22px;letter-spacing:-.2px}
   header p{margin:2px 0 0;font-size:13px;opacity:.85}
-  header button{background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:8px;padding:6px 10px;font:inherit;font-size:13px;cursor:pointer}
+  header button{background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:8px;padding:6px 10px;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
   nav{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
   nav .wrap{display:flex;gap:2px;overflow-x:auto;padding:0 8px;scrollbar-width:none}
   nav .wrap::-webkit-scrollbar{display:none}
@@ -50,9 +50,12 @@
   .entry dd{margin:0;white-space:pre-wrap;word-break:break-word}
   .empty{color:var(--muted);font-size:15px;padding:6px 0}
   .soon li{margin:5px 0}
-  .soon b{font-weight:700}
+  .lock{display:inline-block;background:#eceff3;color:var(--muted);border-radius:999px;font-size:12px;padding:1px 8px;margin-left:6px}
   iframe.cal{width:100%;height:600px;border:1px solid var(--line);border-radius:10px;background:#fff}
-  .login{max-width:380px;margin:8vh auto 0}
+  .narrow{max-width:400px;margin:6vh auto 0}
+  .seg{display:flex;gap:6px;margin-bottom:6px}
+  .seg button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;padding:9px;font:inherit;cursor:pointer;color:var(--muted)}
+  .seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:700}
   @media (max-width:520px){.entry dl{grid-template-columns:1fr}.entry dt{margin-top:6px}}
 </style>
 </head>
@@ -64,11 +67,11 @@
 (function () {
   "use strict";
   var API = "https://hcsoctvuzjwgvxfcrwtb.supabase.co/functions/v1/portal";
-  // 주소로 프로젝트를 고른다. 미리보기에서는 ?p=team1 로 바꿔 볼 수 있다.
+  // 주소의 맨 앞 이름으로 프로젝트를 고른다(orderless.…, team1.…). 미리보기에서는 ?p=team1.
   // admin은 분석 화면을 여는 사람을 부르는 말. 학교 프로젝트에서는 "대표"라고 하지 않는다.
-  var PROJECTS = { "orderless.feeler.kr": { key: "orderless", name: "오더리스", admin: "대표" }, "team1.feeler.kr": { key: "team1", name: "남뀨", admin: "관리자" } };
-  var qp = new URLSearchParams(location.search).get("p");
-  var project = PROJECTS[location.hostname] || (qp === "team1" ? PROJECTS["team1.feeler.kr"] : PROJECTS["orderless.feeler.kr"]);
+  var PROJECTS = { orderless: { key: "orderless", name: "오더리스", admin: "대표" }, team1: { key: "team1", name: "남뀨", admin: "관리자" } };
+  var sub = location.hostname.split(".")[0];
+  var project = PROJECTS[sub] || PROJECTS[new URLSearchParams(location.search).get("p")] || PROJECTS.orderless;
 
   var DAILY = [
     { key: "did", label: "오늘 한 일", required: true },
@@ -84,9 +87,10 @@
     { key: "next", label: "다음 주 할 일" }
   ];
   var ERRORS = {
-    WRONG_PASSCODE: "비밀번호가 맞지 않습니다.", WRONG_PASSWORD: "비밀번호가 맞지 않습니다.", WRONG_SITE: "이 주소에서는 들어갈 수 없는 프로젝트입니다.",
-    LOCKED: "여러 번 틀려서 잠겼습니다. 15분 뒤에 다시 해 주세요.", NO_SESSION: "다시 들어와 주세요.", REQUIRED: "필수 칸을 적어 주세요.",
-    UNKNOWN_MEMBER: "이름을 골라 주세요.", TOO_SHORT: "8자 이상으로 정해 주세요.", ALREADY_SET: "이미 정해져 있습니다.", NETWORK: "연결하지 못했습니다. 잠시 뒤에 다시 해 주세요."
+    WRONG_PASSCODE: "비밀번호가 맞지 않습니다.", WRONG_PASSWORD: "이름이나 비밀번호가 맞지 않습니다.", WRONG_SITE: "이 주소에서는 들어갈 수 없는 프로젝트입니다.",
+    LOCKED: "여러 번 틀려서 잠겼습니다. 15분 뒤에 다시 해 주세요.", REQUIRED: "필수 칸을 적어 주세요.", NAME_REQUIRED: "이름을 적어 주세요.",
+    NAME_TAKEN: "이미 가입된 이름입니다. '이미 가입했어요'에서 들어와 주세요.", TOO_SHORT: "비밀번호는 6자 이상으로 정해 주세요.", TOO_SHORT_ADMIN: "8자 이상으로 정해 주세요.",
+    ALREADY_SET: "이미 정해져 있습니다.", NETWORK: "연결하지 못했습니다. 잠시 뒤에 다시 해 주세요."
   };
   var DAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -102,6 +106,8 @@
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw { code: j.error || "SERVER" }; return j; }); }, function () { throw { code: "NETWORK" }; });
   }
   function say(e) { return ERRORS[e && e.code] || "문제가 생겼습니다. 다시 해 주세요."; }
+  function expired(e) { return e && (e.code === "NO_SESSION" || e.code === "NO_MEMBER"); }
+  function keep(d) { if (d.token) { state.token = d.token; local.set("token", d.token); } state.data = d; }
 
   function el(tag, attrs, children) {
     var n = document.createElement(tag);
@@ -116,55 +122,86 @@
   var view = document.getElementById("view"), tabsEl = document.getElementById("tabs"), nav = document.querySelector("nav"), logoutBtn = document.getElementById("logout");
   document.title = project.name + " 팀 기록";
   document.getElementById("title").textContent = project.name + " 팀 기록";
-
-  function setHeaderDate() {
-    var d = state.data ? state.data.today : "";
-    document.getElementById("today").textContent = d ? d + " (" + DAYS[new Date(d + "T00:00:00").getDay()] + ")" : "";
+  function headerLine() {
+    var d = state.data || {}, t = d.today ? d.today + " (" + DAYS[new Date(d.today + "T00:00:00").getDay()] + ")" : "";
+    document.getElementById("today").textContent = t + (d.me ? "  ·  " + d.me : "");
   }
+  function leave(message) { state.token = null; state.data = null; local.set("token", null); renderTeamGate(message); }
 
-  // ---------- 들어가기 ----------
-  function renderLogin(message) {
-    nav.hidden = true; logoutBtn.hidden = true; view.textContent = "";
-    var input = el("input", { type: "password", id: "pass", inputmode: "numeric", autocomplete: "current-password", placeholder: "팀 비밀번호" });
+  // ---------- 1. 팀 비밀번호 ----------
+  function renderTeamGate(message) {
+    nav.hidden = true; logoutBtn.hidden = true; view.textContent = ""; headerLine();
+    var input = el("input", { type: "password", id: "pass", inputmode: "numeric", autocomplete: "off", placeholder: "팀 비밀번호" });
     var msg = el("span", { class: "msg bad", role: "status", text: message || "" });
     var btn = el("button", { class: "btn", type: "submit", text: "들어가기" });
-    var form = el("form", { class: "card login", onsubmit: function (ev) {
+    view.appendChild(el("form", { class: "card narrow", onsubmit: function (ev) {
       ev.preventDefault(); btn.disabled = true; msg.textContent = "";
-      call("login", { project: project.key, passcode: input.value, token: undefined }).then(function (d) {
-        state.token = d.token; local.set("token", d.token); state.data = d; renderApp();
-      }).catch(function (e) { msg.textContent = say(e); btn.disabled = false; input.select(); });
-    } }, [el("h2", { text: project.name }), el("p", { class: "sub", text: "팀 비밀번호를 넣어 주세요. 한 번 들어오면 이 기기에서는 30일 동안 다시 묻지 않습니다." }), el("label", { for: "pass", text: "비밀번호" }), input, el("div", { class: "row", style: "margin-top:14px" }, [btn, msg])]);
-    view.appendChild(form); input.focus();
+      call("login", { project: project.key, passcode: input.value, token: undefined }).then(function (d) { keep(d); route(); })
+        .catch(function (e) { msg.textContent = say(e); btn.disabled = false; input.select(); });
+    } }, [el("h2", { text: project.name }), el("p", { class: "sub", text: "팀 비밀번호를 넣어 주세요." }), el("label", { for: "pass", text: "팀 비밀번호" }), input, el("div", { class: "row", style: "margin-top:14px" }, [btn, msg])]));
+    input.focus();
+  }
+
+  // ---------- 2. 개인 가입, 로그인 ----------
+  function renderMemberGate() {
+    nav.hidden = true; logoutBtn.hidden = false; view.textContent = ""; headerLine();
+    var joined = state.data.members.filter(function (m) { return m.joined; });
+    var mode = joined.length ? "login" : "signup";
+    var box = el("div");
+    var seg = el("div", { class: "seg" });
+    function draw() {
+      seg.textContent = ""; box.textContent = "";
+      [["signup", "처음이에요"], ["login", "이미 가입했어요"]].forEach(function (m) {
+        seg.appendChild(el("button", { type: "button", "aria-pressed": String(mode === m[0]), text: m[1], onclick: function () { mode = m[0]; draw(); } }));
+      });
+      var msg = el("span", { class: "msg bad", role: "status" });
+      var pw = el("input", { type: "password", id: "mpw", autocomplete: mode === "signup" ? "new-password" : "current-password" });
+      var nameInput, btn;
+      if (mode === "signup") {
+        nameInput = el("input", { type: "text", id: "mname", maxlength: "20", autocomplete: "name", placeholder: "실명" });
+        var pw2 = el("input", { type: "password", id: "mpw2", autocomplete: "new-password" });
+        btn = el("button", { class: "btn", type: "submit", text: "가입하고 들어가기" });
+        box.appendChild(el("form", { onsubmit: function (ev) {
+          ev.preventDefault(); msg.textContent = "";
+          if (pw.value !== pw2.value) { msg.textContent = "비밀번호 두 칸이 서로 다릅니다."; return; }
+          btn.disabled = true;
+          call("member.signup", { name: nameInput.value, password: pw.value }).then(function (d) { keep(d); route(); }).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.textContent = say(e); btn.disabled = false; });
+        } }, [el("label", { for: "mname", text: "이름" }), nameInput, el("label", { for: "mpw", text: "개인 비밀번호" }), pw, el("label", { for: "mpw2", text: "비밀번호 한 번 더" }), pw2,
+          el("p", { class: "sub", style: "margin-top:10px", text: "6자 이상. 다른 곳에서 쓰는 비밀번호는 피해 주세요. 한 번 들어오면 이 기기에서는 30일 동안 다시 묻지 않습니다." }), el("div", { class: "row" }, [btn, msg])]));
+      } else {
+        nameInput = el("select", { id: "mname" }, [el("option", { value: "", text: "이름 고르기" })]);
+        joined.forEach(function (m) { nameInput.appendChild(el("option", { value: m.name, text: m.name })); });
+        btn = el("button", { class: "btn", type: "submit", text: "들어가기" });
+        box.appendChild(el("form", { onsubmit: function (ev) {
+          ev.preventDefault(); msg.textContent = ""; btn.disabled = true;
+          call("member.login", { name: nameInput.value, password: pw.value }).then(function (d) { keep(d); route(); }).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.textContent = say(e); btn.disabled = false; });
+        } }, [el("label", { for: "mname", text: "이름" }), nameInput, el("label", { for: "mpw", text: "개인 비밀번호" }), pw, el("div", { class: "row", style: "margin-top:14px" }, [btn, msg])]));
+      }
+    }
+    draw();
+    view.appendChild(el("div", { class: "card narrow" }, [el("h2", { text: "누구신가요" }), el("p", { class: "sub", text: "기록에 이름이 남도록 각자 가입합니다." }), seg, box]));
   }
 
   // ---------- 공통 조각 ----------
-  function fieldsForm(fields, values, onSave, extraTop) {
-    var me = local.get("me") || "";
-    var sel = el("select", { id: "author" }, [el("option", { value: "", text: "이름 고르기" })]);
-    state.data.members.forEach(function (m) { var o = el("option", { value: m.name, text: m.name }); if (m.name === me) o.selected = true; sel.appendChild(o); });
-    var box = el("div", {}, [extraTop, el("label", { for: "author", text: "이름" }), sel]);
-    var inputs = {};
+  function fieldsForm(fields, values, onSave) {
+    var box = el("div"), inputs = {};
     fields.forEach(function (f) {
       var lab = el("label", { for: "f-" + f.key, text: f.label + (f.required ? " *" : "") });
       if (f.hint) lab.appendChild(el("small", { text: "  " + f.hint }));
       var ta = el("textarea", { id: "f-" + f.key }); ta.value = (values && values[f.key]) || ""; inputs[f.key] = ta;
       box.appendChild(lab); box.appendChild(ta);
     });
-    function fill(v) { fields.forEach(function (f) { inputs[f.key].value = (v && v[f.key]) || ""; }); }
-    sel.addEventListener("change", function () { box.dispatchEvent(new CustomEvent("author", { detail: sel.value })); });
     var msg = el("span", { class: "msg", role: "status" });
     var btn = el("button", { class: "btn", type: "button", text: "저장", onclick: function () {
-      var body = { author: sel.value }, missing = null;
+      var body = {}, missing = null;
       fields.forEach(function (f) { body[f.key] = inputs[f.key].value.trim(); if (f.required && !body[f.key] && !missing) missing = f; });
       msg.className = "msg bad";
-      if (!body.author) { msg.textContent = "이름을 골라 주세요."; sel.focus(); return; }
       if (missing) { msg.textContent = "'" + missing.label + "'을 적어 주세요."; inputs[missing.key].focus(); return; }
       btn.disabled = true; msg.textContent = "";
-      local.set("me", body.author);
-      onSave(body).then(function () { msg.className = "msg"; msg.textContent = "저장했습니다."; }).catch(function (e) { if (e.code === "NO_SESSION") return expire(); msg.textContent = say(e); }).then(function () { btn.disabled = false; });
+      onSave(body).then(function () { msg.className = "msg"; msg.textContent = "저장했습니다."; }).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.textContent = say(e); }).then(function () { btn.disabled = false; });
     } });
     box.appendChild(el("div", { class: "row", style: "margin-top:16px" }, [btn, msg]));
-    return { node: box, fill: fill, author: function () { return sel.value; } };
+    return { node: box, fill: function (v) { fields.forEach(function (f) { inputs[f.key].value = (v && v[f.key]) || ""; }); } };
   }
   function entryNode(fields, log, meta) {
     var dl = el("dl");
@@ -173,30 +210,23 @@
   }
   function soon(title, sub, lines) {
     var ul = el("ul", { class: "soon" });
-    lines.forEach(function (t) { var li = el("li"); li.appendChild(el("b", { text: t[0] })); li.appendChild(document.createTextNode(t[1] ? ": " + t[1] : "")); ul.appendChild(li); });
+    lines.forEach(function (t) { var li = el("li"); li.appendChild(el("b", { text: t[0] })); if (t[2]) li.appendChild(el("span", { class: "lock", text: t[2] })); li.appendChild(document.createTextNode(t[1] ? ": " + t[1] : "")); ul.appendChild(li); });
     return el("div", { class: "card" }, [el("h2", { text: title }), el("p", { class: "sub", text: sub }), ul]);
   }
-  function expire() { state.token = null; local.set("token", null); renderLogin("다시 들어와 주세요."); }
 
   // ---------- 탭 ----------
   function renderToday() {
     var d = state.data;
     if (d.isMonday) view.appendChild(el("div", { class: "note", text: "오늘은 월요일입니다. '주간' 탭에서 지난주를 돌아보고 이번 주 할 일을 적어 주세요." }));
     if (d.isFirstWeek) view.appendChild(el("div", { class: "note", text: "이번 주는 이달의 첫째 주입니다. '월간' 탭의 점검 항목을 확인해 주세요." }));
-
     var people = el("div", { class: "people" });
     d.members.forEach(function (m) {
       people.appendChild(el("div", { class: "person" }, [el("b", { text: m.name }), el("span", { class: m.wroteToday ? "done" : "todo", text: m.wroteToday ? "오늘 작성함" : "아직 안 씀" }), el("span", { class: "todo", text: "  ·  연속 " + m.streak + "일" })]));
     });
     view.appendChild(el("div", { class: "card" }, [el("h2", { text: "오늘 현황" }), el("p", { class: "sub", text: "연속 제출은 평일 기준입니다. 주말은 끊기지 않습니다." }), people]));
-
-    var mineOf = function (name) { return d.todayLogs.filter(function (x) { return x.author === name; })[0]; };
-    var form = fieldsForm(DAILY, mineOf(local.get("me") || ""), function (body) {
-      return call("log.save", body).then(function (nd) { state.data = Object.assign(nd, { token: undefined }); render(); });
-    });
-    form.node.addEventListener("author", function (ev) { form.fill(mineOf(ev.detail)); });
-    view.appendChild(el("div", { class: "card" }, [el("h2", { text: "오늘의 기록" }), el("p", { class: "sub", text: "하루에 한 번. 같은 날 다시 저장하면 고쳐집니다." }), form.node]));
-
+    var mine = d.todayLogs.filter(function (x) { return x.author === d.me; })[0];
+    var form = fieldsForm(DAILY, mine, function (body) { return call("log.save", body).then(function (nd) { keep(nd); render(); }); });
+    view.appendChild(el("div", { class: "card" }, [el("h2", { text: d.me + "님의 오늘 기록" }), el("p", { class: "sub", text: "하루에 한 번. 같은 날 다시 저장하면 고쳐집니다." }), form.node]));
     var feed = el("div", { class: "card" }, [el("h2", { text: "오늘 팀 기록" })]);
     if (!d.todayLogs.length) feed.appendChild(el("p", { class: "empty", text: "아직 오늘 기록이 없습니다." }));
     d.todayLogs.forEach(function (x) { feed.appendChild(entryNode(DAILY, x)); });
@@ -213,36 +243,34 @@
         list.textContent = "";
         if (!r.logs.length) list.appendChild(el("p", { class: "empty", text: "기록이 없습니다." }));
         r.logs.forEach(function (x) { list.appendChild(entryNode(DAILY, x, x.date)); });
-      }).catch(function (e) { if (e.code === "NO_SESSION") return expire(); list.textContent = ""; list.appendChild(el("p", { class: "empty", text: say(e) })); });
+      }).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); list.textContent = ""; list.appendChild(el("p", { class: "empty", text: say(e) })); });
     }
     view.appendChild(el("div", { class: "card" }, [el("h2", { text: "지난 기록" }), el("p", { class: "sub", text: "최근 90일, 최근 날짜부터." }), sel, list]));
     load();
   }
 
   function renderWeekly() {
-    var d = state.data, list = el("div"), mineThisWeek = {};
-    var form = fieldsForm(WEEKLY, null, function (body) { return call("weekly.save", body).then(function () { return call("bootstrap"); }).then(function (nd) { state.data = nd; load(); renderTabs(); }); });
-    form.node.addEventListener("author", function (ev) { form.fill(mineThisWeek[ev.detail]); });
-    view.appendChild(el("div", { class: "card" }, [el("h2", { text: "주간 회고" }), el("p", { class: "sub", text: "매주 월요일. " + d.weekStart + " 주차. 지난주를 돌아보고 이번 주 할 일을 적습니다." }), form.node]));
+    var d = state.data, list = el("div");
+    var form = fieldsForm(WEEKLY, null, function (body) { return call("weekly.save", body).then(function () { return call("bootstrap"); }).then(function (nd) { keep(nd); load(); renderTabs(); }); });
+    view.appendChild(el("div", { class: "card" }, [el("h2", { text: d.me + "님의 주간 회고" }), el("p", { class: "sub", text: "매주 월요일. " + d.weekStart + " 주차. 지난주를 돌아보고 이번 주 할 일을 적습니다." }), form.node]));
     view.appendChild(soon("월요일에 함께 보는 것", "회의 30분", [["보드 점검", "지난주에 끝낸 카드와 이번 주에 할 카드"], ["막힌 것 풀기", "하루 기록의 '아쉬운 것'에서 반복되는 것"]]));
     view.appendChild(el("div", { class: "card" }, [el("h2", { text: "주간 회고 모음" }), list]));
     function load() {
       call("weekly.list").then(function (r) {
-        list.textContent = ""; mineThisWeek = {};
+        list.textContent = "";
         if (!r.reviews.length) list.appendChild(el("p", { class: "empty", text: "아직 주간 회고가 없습니다." }));
-        r.reviews.forEach(function (x) { if (x.week_start === r.weekStart) mineThisWeek[x.author] = x; list.appendChild(entryNode(WEEKLY, x, x.week_start + " 주")); });
-        form.fill(mineThisWeek[form.author()]);
-      }).catch(function (e) { if (e.code === "NO_SESSION") return expire(); });
+        r.reviews.forEach(function (x) { if (x.week_start === r.weekStart && x.author === d.me) form.fill(x); list.appendChild(entryNode(WEEKLY, x, x.week_start + " 주")); });
+      }).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); });
     }
     load();
   }
 
   function renderMonthly() {
-    view.appendChild(soon("월간 점검", "매월 첫째 주에 합니다. 준비 중입니다.", [
-      ["동료 평가", "팀원끼리 서로의 잘한 점과 개선점을 적습니다"], ["분기 목표 점검", "목표 3개의 진행률"], ["지출 정리", "지난달 쓴 돈과 남은 돈"], ["1:1 기록", "둘이 따로 나눈 이야기"]]));
+    view.appendChild(soon("월간 점검", "매월 첫째 주에 합니다.", [
+      ["동료 평가", "팀원끼리 서로의 잘한 점과 개선점을 적습니다", "잠김"], ["분기 목표 점검", "목표 3개의 진행률", "준비 중"], ["지출 정리", "지난달 쓴 돈과 남은 돈", "준비 중"], ["1:1 기록", "둘이 따로 나눈 이야기", "준비 중"]]));
   }
   function renderBoard() {
-    view.appendChild(soon("보드", "준비 중입니다.", [["가져오기", "GitHub 보드의 변경을 받아 옵니다"], ["올리기", "여기서 만들거나 고친 카드를 GitHub로 보냅니다"]]));
+    view.appendChild(soon("보드", state.data.githubReady ? "GitHub 연결 준비가 됐습니다. 화면을 만드는 중입니다." : "준비 중입니다.", [["가져오기", "GitHub 보드의 변경을 받아 옵니다"], ["올리기", "여기서 만들거나 고친 카드를 GitHub로 보냅니다"]]));
   }
   function renderCalendar() {
     var url = state.data.project.calendarUrl;
@@ -255,9 +283,8 @@
       ["분기 목표", "목표 3개와 진행률"], ["결정 로그", "번호를 붙인 결정 기록"], ["고객·기관 접촉 기록", "누구와 언제 무슨 이야기를 했는지"], ["지출", "날짜, 항목, 금액, 영수증"]]));
   }
   function renderAnalysis() {
-    var d = state.data;
-    var A = project.admin;
-    if (d.isAdmin) { view.appendChild(soon("분석", A + " 전용 화면입니다. 기록이 쌓이면 주 1회 보고서를 올립니다.", [["사람별", "약속 대비 완료, 마감 준수, 막힌 일, 잘한 점과 개선점"]])); return; }
+    var d = state.data, A = project.admin;
+    if (d.isAdmin) { view.appendChild(soon("분석", A + " 전용 화면입니다. 기록이 쌓이면 주 1회 보고서를 올립니다.", [["사람별", "약속 대비 완료, 마감 준수, 아쉬운 것의 반복, 잘한 점과 개선점"]])); return; }
     var setup = !d.project.adminSet;
     var input = el("input", { type: "password", id: "adminpw", autocomplete: setup ? "new-password" : "current-password" });
     var msg = el("span", { class: "msg bad", role: "status" });
@@ -265,8 +292,8 @@
     view.appendChild(el("form", { class: "card", onsubmit: function (ev) {
       ev.preventDefault(); btn.disabled = true; msg.textContent = "";
       var p = setup ? call("admin.setup", { password: input.value }).then(function () { return call("admin.login", { password: input.value }); }) : call("admin.login", { password: input.value });
-      p.then(function (r) { state.token = r.token; local.set("token", r.token); return call("bootstrap"); }).then(function (nd) { state.data = nd; render(); })
-        .catch(function (e) { if (e.code === "NO_SESSION") return expire(); msg.textContent = say(e); btn.disabled = false; });
+      p.then(function (r) { state.token = r.token; local.set("token", r.token); return call("bootstrap"); }).then(function (nd) { keep(nd); render(); })
+        .catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.textContent = say(e); btn.disabled = false; });
     } }, [el("h2", { text: "분석" }), el("p", { class: "sub", text: setup ? A + "만 볼 수 있는 화면입니다. " + A + " 전용 비밀번호를 처음 한 번 정해 주세요(8자 이상)." : A + "만 볼 수 있습니다." }),
       el("label", { for: "adminpw", text: A + " 전용 비밀번호" }), input, el("div", { class: "row", style: "margin-top:14px" }, [btn, msg])]));
   }
@@ -286,12 +313,16 @@
     });
   }
   function render() { renderTabs(); view.textContent = ""; TABS.filter(function (t) { return t.id === state.tab; })[0].fn(); }
-  function renderApp() { nav.hidden = false; logoutBtn.hidden = false; setHeaderDate(); render(); }
+  function route() {
+    if (!state.data) return renderTeamGate();
+    if (state.data.needMember) return renderMemberGate();
+    nav.hidden = false; logoutBtn.hidden = false; headerLine(); render();
+  }
 
-  logoutBtn.addEventListener("click", function () { call("logout").catch(function () {}); state.token = null; state.data = null; local.set("token", null); renderLogin(); });
+  logoutBtn.addEventListener("click", function () { call("logout").catch(function () {}); leave(); });
 
-  if (state.token) call("bootstrap").then(function (d) { state.data = d; renderApp(); }).catch(function (e) { e.code === "NETWORK" ? renderLogin(say(e)) : expire(); });
-  else renderLogin();
+  if (state.token) call("bootstrap").then(function (d) { keep(d); route(); }).catch(function (e) { e.code === "NETWORK" ? renderTeamGate(say(e)) : leave(); });
+  else renderTeamGate();
 })();
 </script>
 </body>
