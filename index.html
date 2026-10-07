@@ -119,7 +119,7 @@
     NAME_TAKEN: "이미 가입된 이름입니다. '이미 가입했어요'에서 들어와 주세요.", TOO_SHORT: "비밀번호는 6자 이상으로 정해 주세요.", TOO_SHORT_ADMIN: "8자 이상으로 정해 주세요.",
     ALREADY_SET: "이미 정해져 있습니다.", GITHUB_NOT_READY: "GitHub 연결이 아직 준비되지 않았습니다.", PULL_FIRST: "먼저 '가져오기'를 눌러 주세요.",
     GITHUB_FAILED: "GitHub와 연결하지 못했습니다. 잠시 뒤에 다시 해 주세요.", BAD_OPTION: "보드에 없는 선택지입니다. '가져오기'를 한 뒤 다시 골라 주세요.",
-    BAD_DATE: "마감 날짜를 다시 골라 주세요.", NOT_FOUND: "카드를 찾지 못했습니다. '가져오기'를 눌러 주세요.", NETWORK: "연결하지 못했습니다. 잠시 뒤에 다시 해 주세요."
+    BAD_DATE: "마감 날짜를 다시 골라 주세요.", TOO_SHORT_KEY: "연결 키가 너무 짧습니다.", ADMIN_ONLY: "관리 권한이 필요합니다.", NOT_FOUND: "카드를 찾지 못했습니다. '가져오기'를 눌러 주세요.", NETWORK: "연결하지 못했습니다. 잠시 뒤에 다시 해 주세요."
   };
   var DAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -428,7 +428,56 @@
     if (url) view.appendChild(el("div", { class: "card" }, [el("h2", { text: "팀 일정" }), el("iframe", { class: "cal", src: url, title: "팀 공유 캘린더", loading: "lazy" })]));
     else view.appendChild(soon("팀 일정", "공유 캘린더 주소가 아직 없습니다.", [["구글 캘린더", "팀 공유 캘린더를 만들어 주소를 넣으면 여기에 보입니다"], ["보드 마감일", "카드의 마감일도 함께 보이게 할 예정입니다"]]));
   }
-  function renderMeetings() { view.appendChild(soon("회의록", "준비 중입니다.", [["Notion AI 회의록", "회의 요약, 결정, 할 일을 가져옵니다"]])); }
+  // ---------- 회의록: 구글 미트(Gemini 메모)에서 자동으로 들어오고, 직접 쓸 수도 있다 ----------
+  function renderMeetings() {
+    var d = state.data, A = project.admin, list = el("div"), msg = el("span", { class: "msg", role: "status" });
+    var title = el("input", { type: "text", id: "m-title", maxlength: "200", placeholder: "예: 10월 2주 월요일 회의" });
+    var date = el("input", { type: "date", id: "m-date" }); date.value = d.today;
+    var body = el("textarea", { id: "m-body", style: "min-height:150px", placeholder: "안건, 결정, 할 일(담당·기한)" });
+    var save = el("button", { class: "btn", type: "submit", text: "저장" });
+    view.appendChild(el("form", { class: "card", onsubmit: function (ev) {
+      ev.preventDefault(); msg.className = "msg bad";
+      if (!title.value.trim() || !body.value.trim()) { msg.textContent = "제목과 내용을 적어 주세요."; return; }
+      save.disabled = true; msg.textContent = "";
+      call("meeting.save", { title: title.value, date: date.value, body: body.value }).then(function (r) { title.value = ""; body.value = ""; msg.className = "msg"; msg.textContent = "저장했습니다."; draw(r); })
+        .catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.textContent = say(e); }).then(function () { save.disabled = false; });
+    } }, [el("h2", { text: "회의록 직접 쓰기" }), el("p", { class: "sub", text: "구글 미트 회의는 끝나고 30분 안에 아래 목록에 자동으로 들어옵니다. 미트를 쓰지 않은 회의만 여기에 적습니다." }),
+      el("label", { for: "m-title", text: "제목" }), title, el("label", { for: "m-date", text: "날짜" }), date, el("label", { for: "m-body", text: "내용" }), body, el("div", { class: "row", style: "margin-top:14px" }, [save, msg])]));
+    var keyCard = el("div", { class: "card" });
+    view.appendChild(keyCard);
+    view.appendChild(el("div", { class: "card" }, [el("h2", { text: "회의록 모음" }), list]));
+
+    function drawKey(ingestSet) {
+      keyCard.textContent = "";
+      keyCard.appendChild(el("h2", { text: "구글 미트 연결" }));
+      keyCard.appendChild(el("p", { class: "sub", text: ingestSet ? "연결 키가 정해져 있습니다. 회의 주최자의 구글 계정에서 Apps Script가 30분마다 회의록을 보냅니다." : "아직 연결되지 않았습니다. " + A + "가 연결 키를 만들고, 회의 주최자의 구글 계정에 Apps Script를 한 번 설치하면 됩니다." }));
+      if (!d.isAdmin) { keyCard.appendChild(el("p", { class: "empty", text: "연결 키는 " + A + "만 만들 수 있습니다(분석 탭에서 " + A + " 비밀번호로 들어온 뒤)." })); return; }
+      var out = el("input", { type: "text", readonly: "readonly", "aria-label": "새 연결 키", style: "font-family:monospace" });
+      var note = el("span", { class: "msg", role: "status" });
+      keyCard.appendChild(el("div", { class: "row" }, [el("button", { class: "btn small", type: "button", text: ingestSet ? "연결 키 새로 만들기" : "연결 키 만들기", onclick: function () {
+        var a = new Uint8Array(24); crypto.getRandomValues(a);
+        var k = Array.prototype.map.call(a, function (x) { return ("0" + x.toString(16)).slice(-2); }).join("");
+        call("meeting.key", { key: k }).then(function () { out.value = k; out.select(); note.className = "msg"; note.textContent = "지금 복사해 Apps Script의 PORTAL_KEY에 넣어 주세요. 이 화면을 벗어나면 다시 볼 수 없습니다."; })
+          .catch(function (e) { note.className = "msg bad"; note.textContent = say(e); });
+      } }), note]));
+      keyCard.appendChild(out);
+      keyCard.appendChild(el("p", { class: "sub", style: "margin-top:10px", text: "설치: script.google.com → 새 프로젝트 → 저장소 server/portal/apps-script/meet-sync.gs 붙여 넣기 → 프로젝트 설정 → 스크립트 속성에 PORTAL_KEY(위 키), PROJECT(" + project.key + ") → installTrigger 실행 후 권한 허용." }));
+    }
+    function draw(r) {
+      drawKey(r.ingestSet); list.textContent = "";
+      if (!r.meetings.length) list.appendChild(el("p", { class: "empty", text: "아직 회의록이 없습니다." }));
+      r.meetings.forEach(function (m) {
+        var det = el("details", { class: "entry" });
+        var head = el("summary", { style: "cursor:pointer" }, [el("span", { class: "who", text: m.title }), el("span", { class: "meta", text: (m.held_on || "") + "  ·  " + (m.source === "meet" ? "구글 미트" : m.created_by) })]);
+        det.appendChild(head);
+        det.appendChild(el("div", { style: "white-space:pre-wrap;word-break:break-word;margin-top:8px;font-size:15px", text: m.body }));
+        if (m.url) det.appendChild(el("p", { class: "sub", style: "margin-top:6px" }, [el("a", { href: m.url, target: "_blank", rel: "noopener", text: "구글 문서에서 열기" })]));
+        list.appendChild(det);
+      });
+    }
+    list.appendChild(el("p", { class: "empty", text: "불러오는 중입니다." }));
+    call("meeting.list").then(draw).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); list.textContent = ""; list.appendChild(el("p", { class: "empty", text: say(e) })); });
+  }
   function renderOps() {
     view.appendChild(soon("운영 기록", "준비 중입니다. 쓰임이 확인된 것부터 붙입니다.", [
       ["분기 목표", "목표 3개와 진행률"], ["결정 로그", "번호를 붙인 결정 기록"], ["고객·기관 접촉 기록", "누구와 언제 무슨 이야기를 했는지"], ["지출", "날짜, 항목, 금액, 영수증"]]));
