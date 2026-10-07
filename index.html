@@ -461,7 +461,7 @@
           .catch(function (e) { note.className = "msg bad"; note.textContent = say(e); });
       } }), note]));
       keyCard.appendChild(out);
-      keyCard.appendChild(el("p", { class: "sub", style: "margin-top:10px", text: "설치: script.google.com → 새 프로젝트 → 저장소 server/portal/apps-script/meet-sync.gs 붙여 넣기 → 프로젝트 설정 → 스크립트 속성에 PORTAL_KEY(위 키), PROJECT(" + project.key + ") → installTrigger 실행 후 권한 허용." }));
+      keyCard.appendChild(el("p", { class: "sub", style: "margin-top:10px", text: "설치: script.google.com → 새 프로젝트 → 저장소 server/portal/apps-script/meet-sync.gs 붙여 넣기 → 프로젝트 설정 → 스크립트 속성에 PORTAL_KEY(위 키), PROJECT(" + project.name + ") → installTrigger 실행 후 권한 허용." }));
     }
     function draw(r) {
       drawKey(r.ingestSet); list.textContent = "";
