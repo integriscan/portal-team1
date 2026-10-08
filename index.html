@@ -261,7 +261,6 @@
   function renderToday() {
     var d = state.data;
     if (d.isMonday) view.appendChild(el("div", { class: "note", text: "오늘은 월요일입니다. '주간' 탭에서 지난주를 돌아보고 이번 주 할 일을 적어 주세요." }));
-    if (d.isFirstWeek) view.appendChild(el("div", { class: "note", text: "이번 주는 이달의 첫째 주입니다. '월간' 탭의 점검 항목을 확인해 주세요." }));
     var people = el("div", { class: "people" });
     d.members.forEach(function (m) {
       people.appendChild(el("div", { class: "person" }, [el("b", { text: m.name }), el("span", { class: m.wroteToday ? "done" : "todo", text: m.wroteToday ? "오늘 작성함" : "아직 안 씀" }), el("span", { class: "todo", text: "  ·  연속 " + m.streak + "일" })]));
@@ -390,10 +389,6 @@
     load();
   }
 
-  function renderMonthly() {
-    view.appendChild(soon("월간 점검", "매월 첫째 주에 합니다.", [
-      ["동료 평가", "팀원끼리 서로의 잘한 점과 개선점을 적습니다", "잠김"], ["분기 목표 점검", "목표 3개의 진행률", "준비 중"], ["지출 정리", "지난달 쓴 돈과 남은 돈", "준비 중"], ["1:1 기록", "둘이 따로 나눈 이야기", "준비 중"]]));
-  }
   // ---------- 보드: GitHub와 버튼으로 주고받는다 ----------
   var EVENT = { created: "카드 만듦", title: "제목", status: "상태", area: "영역", owner: "담당", due: "마감", pushed: "GitHub로 올림", removed: "GitHub에서 없어짐", resolved: "양쪽 변경 정리" };
   function when(iso) { var t = new Date(iso), p = function (n) { return (n < 10 ? "0" : "") + n; }; return p(t.getMonth() + 1) + "-" + p(t.getDate()) + " " + p(t.getHours()) + ":" + p(t.getMinutes()); }
@@ -584,18 +579,7 @@
     function drawKey(ingestSet) {
       keyCard.textContent = "";
       keyCard.appendChild(el("h2", { text: "구글 미트 연결" }));
-      keyCard.appendChild(el("p", { class: "sub", text: ingestSet ? "연결 키가 정해져 있습니다. 회의 주최자의 구글 계정에서 Apps Script가 30분마다 회의록을 보냅니다." : "아직 연결되지 않았습니다. " + A + "가 연결 키를 만들고, 회의 주최자의 구글 계정에 Apps Script를 한 번 설치하면 됩니다." }));
-      if (!d.isAdmin) { keyCard.appendChild(el("p", { class: "empty", text: "연결 키는 " + A + "만 만들 수 있습니다(분석 탭에서 " + A + " 비밀번호로 들어온 뒤)." })); return; }
-      var out = el("input", { type: "text", readonly: "readonly", "aria-label": "새 연결 키", style: "font-family:monospace" });
-      var note = el("span", { class: "msg", role: "status" });
-      keyCard.appendChild(el("div", { class: "row" }, [el("button", { class: "btn small", type: "button", text: ingestSet ? "연결 키 새로 만들기" : "연결 키 만들기", onclick: function () {
-        var a = new Uint8Array(24); crypto.getRandomValues(a);
-        var k = Array.prototype.map.call(a, function (x) { return ("0" + x.toString(16)).slice(-2); }).join("");
-        call("meeting.key", { key: k }).then(function () { out.value = k; out.select(); note.className = "msg"; note.textContent = "지금 복사해 Apps Script의 PORTAL_KEY에 넣어 주세요. 이 화면을 벗어나면 다시 볼 수 없습니다."; })
-          .catch(function (e) { note.className = "msg bad"; note.textContent = say(e); });
-      } }), note]));
-      keyCard.appendChild(out);
-      keyCard.appendChild(el("p", { class: "sub", style: "margin-top:10px", text: "설치: script.google.com → 새 프로젝트 → 저장소 server/portal/apps-script/meet-sync.gs 붙여 넣기 → 프로젝트 설정 → 스크립트 속성에 PORTAL_KEY(위 키), PROJECT(" + project.name + ") → installTrigger 실행 후 권한 허용." }));
+      keyCard.appendChild(el("p", { class: "sub", text: ingestSet ? "연결되어 있습니다. 회의가 끝나면 Gemini 회의록이 5분 안에 이 목록에 들어옵니다." : "아직 연결되지 않았습니다. 연결 키는 분석 탭에서 " + A + "가 만듭니다." }));
     }
     function draw(r) {
       drawKey(r.ingestSet); list.textContent = "";
@@ -641,13 +625,76 @@
     list.appendChild(el("p", { class: "empty", text: "불러오는 중입니다." }));
     call("meeting.list").then(draw).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); list.textContent = ""; list.appendChild(el("p", { class: "empty", text: say(e) })); });
   }
+  // ---------- 지출: 날짜, 항목, 금액, 결제 수단, 영수증 ----------
+  function renderExpense() {
+    var d = state.data, list = el("div"), sum = el("div"), msg = el("span", { class: "msg", role: "status" });
+    var date = el("input", { type: "date", id: "x-date" }); date.value = d.today;
+    var item = el("input", { type: "text", id: "x-item", maxlength: "200", placeholder: "예: 회의 다과" });
+    var amount = el("input", { type: "text", id: "x-amount", inputmode: "numeric", placeholder: "원" });
+    var method = el("select", { id: "x-method" }); ["카드", "현금", "계좌이체", "기타"].forEach(function (m) { method.appendChild(el("option", { value: m, text: m })); });
+    var receipt = el("input", { type: "text", id: "x-receipt", maxlength: "500", placeholder: "영수증 사진 링크(드라이브 등, 선택)" });
+    var memo = el("input", { type: "text", id: "x-memo", maxlength: "500", placeholder: "메모(선택)" });
+    var save = el("button", { class: "btn", type: "submit", text: "적기" });
+    var won = function (n) { return Number(n).toLocaleString("ko-KR") + "원"; };
+    function fail(e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.className = "msg bad"; msg.textContent = say(e); }
+    view.appendChild(el("form", { class: "card", onsubmit: function (ev) {
+      ev.preventDefault(); msg.className = "msg bad";
+      var n = Number(String(amount.value).replace(/[^\d]/g, ""));
+      if (!item.value.trim() || !amount.value.trim() || !date.value) { msg.textContent = "날짜, 항목, 금액을 적어 주세요."; return; }
+      save.disabled = true; msg.textContent = "";
+      call("expense.add", { date: date.value, item: item.value, amount: n, method: method.value, receipt: receipt.value, memo: memo.value })
+        .then(function (r) { item.value = ""; amount.value = ""; receipt.value = ""; memo.value = ""; msg.className = "msg"; msg.textContent = "적었습니다."; draw(r); item.focus(); })
+        .catch(fail).then(function () { save.disabled = false; });
+    } }, [el("h2", { text: "지출 적기" }), el("p", { class: "sub", text: "쓴 날 바로 적습니다. 영수증은 사진을 드라이브에 올리고 링크를 붙이면 정산 때 편합니다." }),
+      el("div", { class: "grid3" }, [el("div", {}, [el("label", { for: "x-date", text: "날짜" }), date]), el("div", {}, [el("label", { for: "x-amount", text: "금액" }), amount]), el("div", {}, [el("label", { for: "x-method", text: "결제 수단" }), method])]),
+      el("label", { for: "x-item", text: "항목" }), item, el("label", { for: "x-receipt", text: "영수증" }), receipt, el("label", { for: "x-memo", text: "메모" }), memo,
+      el("div", { class: "row", style: "margin-top:14px" }, [save, msg])]));
+    view.appendChild(el("div", { class: "card" }, [el("h2", { text: "달마다 합계" }), sum]));
+    view.appendChild(el("div", { class: "card" }, [el("h2", { text: "지출 내역" }), list]));
+    function draw(r) {
+      sum.textContent = ""; list.textContent = "";
+      var months = {}, total = 0;
+      r.expenses.forEach(function (x) { var m = x.spent_on.slice(0, 7); months[m] = (months[m] || 0) + Number(x.amount); total += Number(x.amount); });
+      var ks = Object.keys(months).sort().reverse();
+      if (!ks.length) sum.appendChild(el("p", { class: "empty", text: "아직 지출이 없습니다." }));
+      ks.forEach(function (m) { sum.appendChild(el("div", { class: "ev" }, [el("span", { class: "when", text: m.replace("-", "년 ") + "월" }), el("b", { text: won(months[m]) })])); });
+      if (ks.length > 1) sum.appendChild(el("div", { class: "ev" }, [el("span", { class: "when", text: "전체" }), el("b", { text: won(total) })]));
+      if (!r.expenses.length) list.appendChild(el("p", { class: "empty", text: "아직 지출이 없습니다." }));
+      r.expenses.forEach(function (x) {
+        var meta = [x.method, x.created_by + " 적음"].concat(x.memo ? [x.memo] : []).join("  ·  ");
+        list.appendChild(el("div", { class: "entry", style: "display:flex;gap:10px;align-items:flex-start" }, [
+          el("div", { style: "flex:1;min-width:0" }, [el("div", {}, [el("span", { class: "who", text: x.item }), el("span", { class: "meta", text: x.spent_on })]),
+            el("div", { class: "sub", style: "margin:3px 0 0" }, [document.createTextNode(meta), x.receipt_url ? document.createTextNode("  ·  ") : null, x.receipt_url ? el("a", { href: x.receipt_url, target: "_blank", rel: "noopener", text: "영수증" }) : null])]),
+          el("b", { style: "white-space:nowrap", text: won(x.amount) }),
+          el("button", { class: "x", type: "button", style: "border:0;background:none;color:var(--muted);font-size:18px;cursor:pointer", title: "지우기", "aria-label": "지우기", text: "×", onclick: function () { if (confirm("'" + x.item + "' 지출을 지울까요?")) call("expense.remove", { id: x.id }).then(draw).catch(fail); } })]));
+      });
+    }
+    list.appendChild(el("p", { class: "empty", text: "불러오는 중입니다." }));
+    call("expense.list").then(draw).catch(fail);
+  }
+
   function renderOps() {
     view.appendChild(soon("운영 기록", "준비 중입니다. 쓰임이 확인된 것부터 붙입니다.", [
-      ["분기 목표", "목표 3개와 진행률"], ["결정 로그", "번호를 붙인 결정 기록"], ["고객·기관 접촉 기록", "누구와 언제 무슨 이야기를 했는지"], ["지출", "날짜, 항목, 금액, 영수증"]]));
+      ["분기 목표", "목표 3개와 진행률"], ["결정 로그", "번호를 붙인 결정 기록"], ["고객·기관 접촉 기록", "누구와 언제 무슨 이야기를 했는지"]]));
   }
   function renderAnalysis() {
     var d = state.data, A = project.admin;
-    if (d.isAdmin) { view.appendChild(soon("분석", A + " 전용 화면입니다. 기록이 쌓이면 주 1회 보고서를 올립니다.", [["사람별", "약속 대비 완료, 마감 준수, 아쉬운 것의 반복, 잘한 점과 개선점"]])); return; }
+    if (d.isAdmin) {
+      view.appendChild(soon("분석", A + " 전용 화면입니다. 기록이 쌓이면 주 1회 보고서를 올립니다.", [["사람별", "약속 대비 완료, 마감 준수, 아쉬운 것의 반복, 잘한 점과 개선점"]]));
+      var out = el("input", { type: "text", readonly: "readonly", "aria-label": "새 연결 키", style: "font-family:monospace;margin-top:10px" });
+      var note = el("span", { class: "msg", role: "status" });
+      view.appendChild(el("div", { class: "card" }, [el("h2", { text: "구글 연결 키" }),
+        el("p", { class: "sub", text: (d.project.ingestSet ? "연결 키가 정해져 있습니다. 새로 만들면 지금 키는 바로 못 쓰게 되니 Apps Script의 PORTAL_KEY도 바꿔야 합니다." : "회의록과 캘린더를 보내는 Apps Script가 쓰는 키입니다.") + " 회의록과 캘린더 스크립트가 같은 키를 씁니다." }),
+        el("div", { class: "row" }, [el("button", { class: "btn small", type: "button", text: d.project.ingestSet ? "연결 키 새로 만들기" : "연결 키 만들기", onclick: function () {
+          if (d.project.ingestSet && !confirm("새로 만들면 지금 키는 바로 못 씁니다. 계속할까요?")) return;
+          var a = new Uint8Array(24); crypto.getRandomValues(a);
+          var k = Array.prototype.map.call(a, function (x) { return ("0" + x.toString(16)).slice(-2); }).join("");
+          call("meeting.key", { key: k }).then(function () { out.value = k; out.select(); d.project.ingestSet = true; note.className = "msg"; note.textContent = "지금 복사해 Apps Script 스크립트 속성 PORTAL_KEY에 넣어 주세요. 이 화면을 벗어나면 다시 볼 수 없습니다."; })
+            .catch(function (e) { note.className = "msg bad"; note.textContent = say(e); });
+        } }), note]), out,
+        el("p", { class: "sub", style: "margin-top:10px", text: "설치: 저장소 server/portal/apps-script/meet-sync.gs 붙여 넣기 → 스크립트 속성 PORTAL_KEY, PROJECT(" + project.name + "), MODE(notes·calendar·비움), GUESTS(선택) → installTrigger 실행." })]));
+      return;
+    }
     var setup = !d.project.adminSet;
     var input = el("input", { type: "password", id: "adminpw", autocomplete: setup ? "new-password" : "current-password" });
     var msg = el("span", { class: "msg bad", role: "status" });
@@ -663,9 +710,9 @@
 
   var TABS = [
     { id: "today", name: "오늘", fn: renderToday }, { id: "history", name: "지난 기록", fn: renderHistory },
-    { id: "weekly", name: "주간", fn: renderWeekly, dot: function (d) { return d.isMonday; } }, { id: "monthly", name: "월간", fn: renderMonthly, dot: function (d) { return d.isFirstWeek; } },
+    { id: "weekly", name: "주간", fn: renderWeekly, dot: function (d) { return d.isMonday; } },
     { id: "board", name: "보드", fn: renderBoard }, { id: "calendar", name: "일정", fn: renderCalendar }, { id: "meetings", name: "회의록", fn: renderMeetings },
-    { id: "ops", name: "운영", fn: renderOps }, { id: "analysis", name: "분석", fn: renderAnalysis }
+    { id: "expense", name: "지출", fn: renderExpense }, { id: "ops", name: "운영", fn: renderOps }, { id: "analysis", name: "분석", fn: renderAnalysis }
   ];
   function renderTabs() {
     tabsEl.textContent = "";
