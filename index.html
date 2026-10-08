@@ -28,7 +28,7 @@
   .note{background:var(--note-bg);color:var(--note);border:1px solid #f0dfb0;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:14px}
   label{display:block;font-weight:600;font-size:14px;margin:14px 0 5px}
   label small{font-weight:400;color:var(--muted)}
-  textarea,input[type=text],input[type=password],input[type=date],select{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 11px;font:inherit;background:#fff;color:var(--ink)}
+  textarea,input[type=text],input[type=password],input[type=date],input[type=time],select{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 11px;font:inherit;background:#fff;color:var(--ink)}
   textarea{min-height:62px;resize:vertical}
   textarea:focus,input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -82,6 +82,20 @@
   dialog h2{margin:0 0 4px;font-size:18px}
   .log{margin:6px 0 0;padding:0;list-style:none;font-size:13px;color:var(--muted)}
   .log li{padding:3px 0;border-top:1px solid var(--line)}
+  .checks{list-style:none;margin:6px 0 0;padding:0}
+  .checks li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}
+  .checks li:first-child{border-top:0}
+  .checks input[type=checkbox]{width:20px;height:20px;margin-top:2px;flex:none;accent-color:var(--accent)}
+  .checks .t{flex:1;min-width:0;overflow-wrap:anywhere}
+  .checks .done .t{color:var(--muted);text-decoration:line-through}
+  .checks .x{border:0;background:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0 4px}
+  .addrow{display:grid;grid-template-columns:1fr 130px 150px auto;gap:8px;margin-top:10px}
+  .day{margin-top:12px}
+  .day h3{font-size:14px;margin:0 0 4px;color:var(--accent)}
+  .day h3.today{color:var(--bad)}
+  .ev{display:flex;gap:10px;padding:5px 0;font-size:15px}
+  .ev .when{color:var(--muted);width:92px;flex:none;font-size:14px}
+  @media (max-width:760px){.addrow{grid-template-columns:1fr 1fr}}
   @media (max-width:760px){.cols{grid-template-columns:1fr}.col{display:none}.col.active{display:block}.only-narrow{display:flex}.grid3{grid-template-columns:1fr}}
   @media (max-width:520px){.entry dl{grid-template-columns:1fr}.entry dt{margin-top:6px}}
 </style>
@@ -253,6 +267,7 @@
       people.appendChild(el("div", { class: "person" }, [el("b", { text: m.name }), el("span", { class: m.wroteToday ? "done" : "todo", text: m.wroteToday ? "오늘 작성함" : "아직 안 씀" }), el("span", { class: "todo", text: "  ·  연속 " + m.streak + "일" })]));
     });
     view.appendChild(el("div", { class: "card" }, [el("h2", { text: "오늘 현황" }), el("p", { class: "sub", text: "연속 제출은 평일 기준입니다. 주말은 끊기지 않습니다." }), people]));
+    view.appendChild(checklistCard());
     var mine = d.todayLogs.filter(function (x) { return x.author === d.me; })[0];
     var form = fieldsForm(DAILY, mine, function (body) { return call("log.save", body).then(function (nd) { keep(nd); render(); }); });
     view.appendChild(el("div", { class: "card" }, [el("h2", { text: d.me + "님의 오늘 기록" }), el("p", { class: "sub", text: "하루에 한 번. 같은 날 다시 저장하면 고쳐집니다." }), form.node]));
@@ -260,6 +275,87 @@
     if (!d.todayLogs.length) feed.appendChild(el("p", { class: "empty", text: "아직 오늘 기록이 없습니다." }));
     d.todayLogs.forEach(function (x) { feed.appendChild(entryNode(DAILY, x)); });
     view.appendChild(feed);
+  }
+
+  // ---------- 체크리스트(매일 업무) ----------
+  // 안 끝난 일은 다음 날에도 남고, 끝낸 일은 그날만 줄을 그어 보여 준다.
+  function checklistCard() {
+    var d = state.data, card = el("div", { class: "card" }), list = el("ul", { class: "checks" }), msg = el("span", { class: "msg", role: "status" });
+    var all = local.get("tasksAll") === "1", tasks = [];
+    var title = el("input", { type: "text", maxlength: "300", placeholder: "할 일 적고 Enter", "aria-label": "할 일" });
+    var owner = el("select", { "aria-label": "담당" }, [el("option", { value: "", text: "담당 없음" })]);
+    d.members.forEach(function (m) { owner.appendChild(el("option", { value: m.name, text: m.name })); }); owner.value = d.me;
+    var due = el("input", { type: "date", "aria-label": "기한" });
+    function apply(r) { tasks = r.tasks; draw(); }
+    function fail(e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.className = "msg bad"; msg.textContent = say(e); }
+    function add() {
+      if (!title.value.trim()) { title.focus(); return; }
+      call("task.add", { title: title.value, owner: owner.value, due: due.value }).then(function (r) { title.value = ""; due.value = ""; apply(r); title.focus(); }).catch(fail);
+    }
+    title.addEventListener("keydown", function (ev) { if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); add(); } });
+    function draw() {
+      list.textContent = "";
+      var shown = tasks.filter(function (t) { return all || t.owner === d.me || (!t.owner && t.created_by === d.me); });
+      var open = shown.filter(function (t) { return !t.done; }).length;
+      head.textContent = (all ? "팀 할 일" : d.me + "님의 오늘 할 일") + "  " + (shown.length - open) + "/" + shown.length;
+      if (!shown.length) list.appendChild(el("li", {}, [el("span", { class: "empty", text: "할 일이 없습니다. 아래에 적거나, 회의록 탭에서 '할 일 뽑기'를 눌러 보세요." })]));
+      shown.forEach(function (t) {
+        var box = el("input", { type: "checkbox", "aria-label": t.title }); box.checked = t.done;
+        box.addEventListener("change", function () { call("task.toggle", { id: t.id, done: box.checked }).then(apply).catch(fail); });
+        var meta = [];
+        if (all && t.owner) meta.push(t.owner);
+        if (t.due) meta.push((t.due < d.today && !t.done ? "지남 " : "기한 ") + t.due.slice(5));
+        if (t.meeting_id) meta.push("회의록에서");
+        if (!t.done && t.created_on < d.today) meta.push(t.created_on.slice(5) + "부터");
+        list.appendChild(el("li", { class: t.done ? "done" : "" }, [box, el("div", { class: "t" }, [el("div", { text: t.title }), meta.length ? el("div", { class: "sub", style: "margin:2px 0 0", text: meta.join("  ·  ") }) : null]),
+          el("button", { class: "x", type: "button", title: "지우기", "aria-label": "지우기", text: "×", onclick: function () { if (confirm("이 할 일을 지울까요?")) call("task.remove", { id: t.id }).then(apply).catch(fail); } })]));
+      });
+    }
+    var head = el("h2", { text: "오늘 할 일" });
+    var toggle = el("button", { class: "btn small ghost", type: "button", text: all ? "내 것만" : "팀 전체", onclick: function () { all = !all; local.set("tasksAll", all ? "1" : null); toggle.textContent = all ? "내 것만" : "팀 전체"; draw(); } });
+    var carry = el("button", { class: "btn small ghost", type: "button", text: "어제 적은 '내일 할 일' 가져오기", onclick: function () {
+      carry.disabled = true;
+      call("log.history", { author: d.me }).then(function (r) {
+        var prev = r.logs.filter(function (l) { return l.date < d.today; })[0];
+        var lines = prev ? splitLines(prev.next) : [];
+        var have = tasks.map(function (t) { return t.title; });
+        lines = lines.filter(function (l) { return have.indexOf(l) < 0; });
+        if (!lines.length) { msg.className = "msg"; msg.textContent = prev ? "가져올 새 항목이 없습니다." : "지난 하루 기록이 없습니다."; return; }
+        return call("task.add", { items: lines.map(function (l) { return { title: l, owner: d.me }; }) }).then(function (r2) { apply(r2); msg.className = "msg"; msg.textContent = prev.date + " 기록에서 " + lines.length + "개를 가져왔습니다."; });
+      }).catch(fail).then(function () { carry.disabled = false; });
+    } });
+    card.appendChild(el("div", { class: "row", style: "justify-content:space-between" }, [head, el("div", { class: "row" }, [carry, toggle])]));
+    card.appendChild(el("p", { class: "sub", text: "끝내면 체크합니다. 안 끝난 일은 내일로 넘어갑니다." }));
+    card.appendChild(list);
+    card.appendChild(el("div", { class: "addrow" }, [title, owner, due, el("button", { class: "btn small", type: "button", text: "추가", onclick: add })]));
+    card.appendChild(msg);
+    list.appendChild(el("li", {}, [el("span", { class: "empty", text: "불러오는 중입니다." })]));
+    call("task.list").then(apply).catch(fail);
+    return card;
+  }
+  // 여러 줄 글을 할 일 목록으로: 줄마다 나누고 글머리표·번호를 뗀다.
+  function splitLines(t) {
+    return String(t || "").split(/\n|(?:^|\s)(?=\d+[.)]\s)/).map(function (l) { return l.replace(/^\s*(?:[-*•·▪◦]|\d+[.)]|\[ ?\]|☐)\s*/, "").trim(); })
+      .filter(function (l) { return l.length > 1 && l.length <= 300; }).slice(0, 20);
+  }
+  // 회의록에서 할 일 찾기: '다음 단계', '할 일', 'Action items' 같은 제목 아래 줄들. 없으면 담당자 이름이 들어간 줄.
+  function meetingTasks(body, members) {
+    var lines = String(body || "").split(/\n/), out = [], inSec = false;
+    var head = /(다음\s*단계|추천.*단계|할\s*일|액션\s*아이템|후속\s*조치|next\s*steps|action\s*items|to-?dos?)/i;
+    for (var i = 0; i < lines.length; i++) {
+      var l = lines[i].trim();
+      if (!l) continue;
+      if (head.test(l) && l.length < 40) { inSec = true; continue; }
+      if (inSec) {
+        if (/^(요약|세부|상세|summary|details|참석|회의록)/i.test(l) && l.length < 40) { inSec = false; continue; }
+        out.push(l);
+      }
+    }
+    if (!out.length) out = lines.map(function (l) { return l.trim(); }).filter(function (l) { return members.some(function (m) { return l.indexOf(m) >= 0; }) && /(하기|할 것|예정|까지|담당|will)/.test(l); });
+    return splitLines(out.join("\n")).map(function (l) {
+      var who = members.filter(function (m) { return l.indexOf(m) >= 0 || l.indexOf(m.slice(1)) >= 0; })[0] || "";
+      return { title: l.replace(/^\[[^\]]*\]\s*/, ""), owner: who };
+    });
   }
 
   function renderHistory() {
@@ -423,10 +519,48 @@
     draw();
     call("board.list").then(function (r) { B = r; draw(); }).catch(function (e) { B = { ready: false, options: { status: [], area: [], owner: [] }, items: [] }; draw(); fail(e); });
   }
+  // ---------- 일정: 팀 구글 캘린더와 5분마다 주고받는다 ----------
   function renderCalendar() {
-    var url = state.data.project.calendarUrl;
-    if (url) view.appendChild(el("div", { class: "card" }, [el("h2", { text: "팀 일정" }), el("iframe", { class: "cal", src: url, title: "팀 공유 캘린더", loading: "lazy" })]));
-    else view.appendChild(soon("팀 일정", "공유 캘린더 주소가 아직 없습니다.", [["구글 캘린더", "팀 공유 캘린더를 만들어 주소를 넣으면 여기에 보입니다"], ["보드 마감일", "카드의 마감일도 함께 보이게 할 예정입니다"]]));
+    var d = state.data, box = el("div"), msg = el("span", { class: "msg", role: "status" });
+    var title = el("input", { type: "text", id: "e-title", maxlength: "200", placeholder: "예: 남뀨 회의" });
+    var date = el("input", { type: "date", id: "e-date" }); date.value = d.today;
+    var start = el("input", { type: "time", id: "e-start", "aria-label": "시작" }), end = el("input", { type: "time", id: "e-end", "aria-label": "끝" });
+    var place = el("input", { type: "text", id: "e-place", maxlength: "200", placeholder: "장소 또는 미트 주소(선택)" });
+    var save = el("button", { class: "btn", type: "submit", text: "일정 추가" });
+    view.appendChild(el("form", { class: "card", onsubmit: function (ev) {
+      ev.preventDefault(); msg.className = "msg bad";
+      if (!title.value.trim() || !date.value) { msg.textContent = "제목과 날짜를 적어 주세요."; return; }
+      save.disabled = true; msg.textContent = "";
+      call("calendar.add", { title: title.value, date: date.value, start: start.value, end: end.value, location: place.value }).then(function (r) { title.value = ""; start.value = ""; end.value = ""; place.value = ""; msg.className = "msg"; msg.textContent = "추가했습니다. 5분 안에 팀 구글 캘린더에도 들어갑니다."; draw(r); })
+        .catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.textContent = say(e); }).then(function () { save.disabled = false; });
+    } }, [el("h2", { text: "일정 추가" }), el("p", { class: "sub", text: "시간을 비우면 하루 종일 일정이 됩니다. 구글 캘린더 '" + project.name + "'에서 만든 일정도 5분 안에 여기에 보입니다." }),
+      el("label", { for: "e-title", text: "제목" }), title,
+      el("div", { class: "grid3" }, [el("div", {}, [el("label", { for: "e-date", text: "날짜" }), date]), el("div", {}, [el("label", { for: "e-start", text: "시작" }), start]), el("div", {}, [el("label", { for: "e-end", text: "끝" }), end])]),
+      el("label", { for: "e-place", text: "장소" }), place, el("div", { class: "row", style: "margin-top:14px" }, [save, msg])]));
+    view.appendChild(el("div", { class: "card" }, [el("h2", { text: "다가오는 일정" }), box]));
+    if (d.project.calendarUrl) view.appendChild(el("div", { class: "card" }, [el("h2", { text: "구글 캘린더" }), el("iframe", { class: "cal", src: d.project.calendarUrl, title: "팀 공유 캘린더", loading: "lazy" })]));
+    var DOW = DAYS;
+    function hm(iso) { var t = new Date(iso); return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(t); }
+    function day(iso) { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date(iso)); }
+    function draw(r) {
+      box.textContent = "";
+      box.appendChild(el("p", { class: "sub", text: r.syncedAt ? "구글 캘린더와 마지막으로 맞춘 때: " + when(r.syncedAt) : "아직 구글 캘린더와 연결되지 않았습니다. 회의를 여는 계정의 Apps Script에서 installTrigger를 다시 실행해 주세요." }));
+      var byDay = {};
+      function put(k, item) { (byDay[k] = byDay[k] || []).push(item); }
+      r.events.forEach(function (e) { put(e.all_day ? day(e.starts_at) : day(e.starts_at), { when: e.all_day ? "하루 종일" : hm(e.starts_at) + (e.ends_at ? "~" + hm(e.ends_at) : ""), text: e.title + (e.location ? "  ·  " + e.location : ""), tag: e.pending ? "캘린더로 보내는 중" : "" }); });
+      r.dues.forEach(function (c) { put(c.due, { when: "보드 마감", text: c.title + (c.owner ? "  ·  " + c.owner : ""), tag: c.status }); });
+      r.tasks.forEach(function (t) { put(t.due, { when: "할 일 기한", text: t.title + (t.owner ? "  ·  " + t.owner : ""), tag: "" }); });
+      var keys = Object.keys(byDay).sort();
+      if (!keys.length) { box.appendChild(el("p", { class: "empty", text: "앞으로 6주 동안 일정이 없습니다." })); return; }
+      keys.forEach(function (k) {
+        var dt = new Date(k + "T00:00:00");
+        var sec = el("div", { class: "day" }, [el("h3", { class: k === d.today ? "today" : "", text: k.slice(5).replace("-", "월 ") + "일 (" + DOW[dt.getDay()] + ")" + (k === d.today ? "  오늘" : "") })]);
+        byDay[k].forEach(function (it) { sec.appendChild(el("div", { class: "ev" }, [el("span", { class: "when", text: it.when }), el("span", {}, [document.createTextNode(it.text), it.tag ? el("span", { class: "chip plain", style: "margin-left:6px", text: it.tag }) : null])])); });
+        box.appendChild(sec);
+      });
+    }
+    box.appendChild(el("p", { class: "empty", text: "불러오는 중입니다." }));
+    call("calendar.list", { days: 42 }).then(draw).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); box.textContent = ""; box.appendChild(el("p", { class: "empty", text: say(e) })); });
   }
   // ---------- 회의록: 구글 미트(Gemini 메모)에서 자동으로 들어오고, 직접 쓸 수도 있다 ----------
   function renderMeetings() {
@@ -472,8 +606,37 @@
         det.appendChild(head);
         det.appendChild(el("div", { style: "white-space:pre-wrap;word-break:break-word;margin-top:8px;font-size:15px", text: m.body }));
         if (m.url) det.appendChild(el("p", { class: "sub", style: "margin-top:6px" }, [el("a", { href: m.url, target: "_blank", rel: "noopener", text: "구글 문서에서 열기" })]));
+        var pick = el("div");
+        det.appendChild(el("div", { class: "row", style: "margin-top:8px" }, [el("button", { class: "btn small ghost", type: "button", text: "할 일 뽑기", onclick: function () { drawPick(pick, m); } })]));
+        det.appendChild(pick);
         list.appendChild(det);
       });
+    }
+    function drawPick(box, m) {
+      box.textContent = "";
+      var names = state.data.members.map(function (x) { return x.name; }), found = meetingTasks(m.body, names);
+      if (!found.length) { box.appendChild(el("p", { class: "empty", text: "할 일로 보이는 줄을 찾지 못했습니다. 오늘 탭에서 직접 적어 주세요." })); return; }
+      var rows = el("ul", { class: "checks" }), picks = [];
+      found.forEach(function (f) {
+        var box2 = el("input", { type: "checkbox", "aria-label": f.title }); box2.checked = true;
+        var t = el("input", { type: "text", maxlength: "300" }); t.value = f.title;
+        var o = el("select", { "aria-label": "담당", style: "max-width:130px" }, [el("option", { value: "", text: "담당 없음" })]);
+        names.forEach(function (n) { o.appendChild(el("option", { value: n, text: n })); }); o.value = f.owner;
+        var dd = el("input", { type: "date", "aria-label": "기한", style: "max-width:150px" });
+        picks.push({ box: box2, t: t, o: o, dd: dd });
+        rows.appendChild(el("li", {}, [box2, el("div", { class: "t" }, [t]), o, dd]));
+      });
+      var note = el("span", { class: "msg", role: "status" });
+      var addBtn = el("button", { class: "btn small", type: "button", text: "체크리스트에 추가", onclick: function () {
+        var items = picks.filter(function (p) { return p.box.checked && p.t.value.trim(); }).map(function (p) { return { title: p.t.value, owner: p.o.value, due: p.dd.value, meetingId: m.id }; });
+        if (!items.length) { note.className = "msg bad"; note.textContent = "고른 항목이 없습니다."; return; }
+        addBtn.disabled = true;
+        call("task.add", { items: items }).then(function () { box.textContent = ""; box.appendChild(el("p", { class: "msg", text: items.length + "개를 체크리스트에 넣었습니다. 오늘 탭에서 볼 수 있습니다." })); })
+          .catch(function (e) { note.className = "msg bad"; note.textContent = say(e); addBtn.disabled = false; });
+      } });
+      box.appendChild(el("p", { class: "sub", style: "margin-top:8px", text: "회의록에서 찾은 할 일입니다. 고치거나 빼고 넣으세요." }));
+      box.appendChild(rows);
+      box.appendChild(el("div", { class: "row", style: "margin-top:8px" }, [addBtn, note]));
     }
     list.appendChild(el("p", { class: "empty", text: "불러오는 중입니다." }));
     call("meeting.list").then(draw).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); list.textContent = ""; list.appendChild(el("p", { class: "empty", text: say(e) })); });
@@ -518,6 +681,16 @@
     if (state.data.needMember) return renderMemberGate();
     nav.hidden = false; logoutBtn.hidden = false; headerLine(); render();
   }
+
+  // 날짜가 바뀌면(자정이 지나면) 오늘 칸을 새로 연다. 창을 열어 둔 채 넘어가도 어제 기록을 고치지 않게.
+  var kstNow = function () { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date()); };
+  function checkDay() {
+    var d = state.data;
+    if (!d || d.needMember || !d.today || kstNow() === d.today || document.hidden) return;
+    call("bootstrap").then(function (nd) { keep(nd); if (state.tab === "today" || state.tab === "calendar") render(); else { headerLine(); renderTabs(); } }).catch(function () {});
+  }
+  setInterval(checkDay, 60000);
+  document.addEventListener("visibilitychange", checkDay);
 
   logoutBtn.addEventListener("click", function () { call("logout").catch(function () {}); leave(); });
 
