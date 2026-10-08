@@ -570,7 +570,7 @@
       save.disabled = true; msg.textContent = "";
       call("meeting.save", { title: title.value, date: date.value, body: body.value }).then(function (r) { title.value = ""; body.value = ""; msg.className = "msg"; msg.textContent = "저장했습니다."; draw(r); })
         .catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.textContent = say(e); }).then(function () { save.disabled = false; });
-    } }, [el("h2", { text: "회의록 직접 쓰기" }), el("p", { class: "sub", text: "구글 미트 회의는 끝나고 30분 안에 아래 목록에 자동으로 들어옵니다. 미트를 쓰지 않은 회의만 여기에 적습니다." }),
+    } }, [el("h2", { text: "회의록 직접 쓰기" }), el("p", { class: "sub", text: "클로바노트 등에서 정리한 회의록을 붙여 넣습니다. '다음 할 일' 아래에 '[이름] 할 일' 형식으로 적어 두면 '할 일 뽑기'가 담당자까지 찾아 줍니다." }),
       el("label", { for: "m-title", text: "제목" }), title, el("label", { for: "m-date", text: "날짜" }), date, el("label", { for: "m-body", text: "내용" }), body, el("div", { class: "row", style: "margin-top:14px" }, [save, msg])]));
     var keyCard = el("div", { class: "card" });
     view.appendChild(keyCard);
@@ -591,7 +591,8 @@
         det.appendChild(el("div", { style: "white-space:pre-wrap;word-break:break-word;margin-top:8px;font-size:15px", text: m.body }));
         if (m.url) det.appendChild(el("p", { class: "sub", style: "margin-top:6px" }, [el("a", { href: m.url, target: "_blank", rel: "noopener", text: "구글 문서에서 열기" })]));
         var pick = el("div");
-        det.appendChild(el("div", { class: "row", style: "margin-top:8px" }, [el("button", { class: "btn small ghost", type: "button", text: "할 일 뽑기", onclick: function () { drawPick(pick, m); } })]));
+        det.appendChild(el("div", { class: "row", style: "margin-top:8px" }, [el("button", { class: "btn small ghost", type: "button", text: "할 일 뽑기", onclick: function () { drawPick(pick, m); } }),
+          el("button", { class: "btn small ghost", type: "button", text: "지우기", onclick: function () { if (confirm("'" + m.title + "' 회의록을 사이트에서 지울까요? 구글 문서 원본은 그대로 남습니다.")) call("meeting.remove", { id: m.id }).then(draw).catch(function (e) { alert(say(e)); }); } })]));
         det.appendChild(pick);
         list.appendChild(det);
       });
