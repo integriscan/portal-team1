@@ -269,7 +269,7 @@
     view.appendChild(checklistCard());
     var mine = d.todayLogs.filter(function (x) { return x.author === d.me; })[0];
     var form = fieldsForm(DAILY, mine, function (body) { return call("log.save", body).then(function (nd) { keep(nd); render(); }); });
-    view.appendChild(el("div", { class: "card" }, [el("h2", { text: d.me + "님의 오늘 기록" }), el("p", { class: "sub", text: "하루에 한 번. 같은 날 다시 저장하면 고쳐집니다." }), form.node]));
+    view.appendChild(el("div", { class: "card" }, [el("h2", { text: d.me + "님의 " + (d.logDay && d.logDay !== d.today ? "어제 기록 (" + d.logDay.slice(5) + ")" : "오늘 기록") }), el("p", { class: "sub", text: d.logDay && d.logDay !== d.today ? "어제 기록은 오늘 오전 9시까지 쓰고 고칠 수 있습니다. 9시가 지나면 오늘 칸이 열립니다." : "하루에 한 번. 마감은 다음 날 오전 9시이고, 그 전에 다시 저장하면 고쳐집니다." }), form.node]));
     var feed = el("div", { class: "card" }, [el("h2", { text: "오늘 팀 기록" })]);
     if (!d.todayLogs.length) feed.appendChild(el("p", { class: "empty", text: "아직 오늘 기록이 없습니다." }));
     d.todayLogs.forEach(function (x) { feed.appendChild(entryNode(DAILY, x)); });
@@ -336,6 +336,17 @@
   function splitLines(t) {
     return String(t || "").split(/\n|(?:^|\s)(?=\d+[.)]\s)/).map(function (l) { return l.replace(/^\s*(?:[-*•·▪◦]|\d+[.)]|\[ ?\]|☐)\s*/, "").trim(); })
       .filter(function (l) { return l.length > 1 && l.length <= 300; }).slice(0, 20);
+  }
+  // 클로바노트 내보내기 파일 읽기. DOCX는 JSZip으로 열어 문단 글만 꺼낸다.
+  function readNoteFile(f) {
+    if (!/\.docx$/i.test(f.name)) return f.text();
+    var load = window.JSZip ? Promise.resolve() : new Promise(function (ok, no) {
+      var sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc);
+    });
+    return load.then(function () { return f.arrayBuffer(); }).then(function (buf) { return JSZip.loadAsync(buf); }).then(function (zip) { return zip.file("word/document.xml").async("string"); }).then(function (xml) {
+      var doc = new DOMParser().parseFromString(xml, "application/xml"), W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+      return Array.prototype.map.call(doc.getElementsByTagNameNS(W, "p"), function (p) { return Array.prototype.map.call(p.getElementsByTagNameNS(W, "t"), function (t) { return t.textContent; }).join(""); }).join("\n");
+    });
   }
   // 회의록에서 할 일 찾기: '다음 단계', '할 일', 'Action items' 같은 제목 아래 줄들. 없으면 담당자 이름이 들어간 줄.
   function meetingTasks(body, members) {
@@ -564,13 +575,28 @@
     var date = el("input", { type: "date", id: "m-date" }); date.value = d.today;
     var body = el("textarea", { id: "m-body", style: "min-height:150px", placeholder: "안건, 결정, 할 일(담당·기한)" });
     var save = el("button", { class: "btn", type: "submit", text: "저장" });
+    // 클로바노트 내보내기 파일(TXT, DOCX)을 브라우저에서 읽어 칸을 채운다. 파일은 서버로 보내지 않고 글만 저장한다.
+    var file = el("input", { type: "file", accept: ".txt,.docx,text/plain", style: "display:none" });
+    var fileBtn = el("button", { class: "btn small ghost", type: "button", text: "클로바노트 파일 올리기", onclick: function () { file.click(); } });
+    file.addEventListener("change", function () {
+      var f = file.files[0]; if (!f) return;
+      msg.className = "msg"; msg.textContent = "파일을 읽는 중입니다.";
+      readNoteFile(f).then(function (t) {
+        body.value = t.trim();
+        if (!title.value.trim()) title.value = f.name.replace(/\.(txt|docx)$/i, "");
+        var m = (f.name + "\n" + t.slice(0, 300)).match(/(20\d{2})[.\-\/년 ]\s*(\d{1,2})[.\-\/월 ]\s*(\d{1,2})/);
+        if (m) date.value = m[1] + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[3]).slice(-2);
+        msg.textContent = "불러왔습니다. 확인하고 저장을 눌러 주세요.";
+      }).catch(function () { msg.className = "msg bad"; msg.textContent = "파일을 읽지 못했습니다. TXT로 내보내 다시 올려 주세요."; }).then(function () { file.value = ""; });
+    });
     view.appendChild(el("form", { class: "card", onsubmit: function (ev) {
       ev.preventDefault(); msg.className = "msg bad";
       if (!title.value.trim() || !body.value.trim()) { msg.textContent = "제목과 내용을 적어 주세요."; return; }
       save.disabled = true; msg.textContent = "";
       call("meeting.save", { title: title.value, date: date.value, body: body.value }).then(function (r) { title.value = ""; body.value = ""; msg.className = "msg"; msg.textContent = "저장했습니다."; draw(r); })
         .catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.textContent = say(e); }).then(function () { save.disabled = false; });
-    } }, [el("h2", { text: "회의록 직접 쓰기" }), el("p", { class: "sub", text: "클로바노트 등에서 정리한 회의록을 붙여 넣습니다. '다음 할 일' 아래에 '[이름] 할 일' 형식으로 적어 두면 '할 일 뽑기'가 담당자까지 찾아 줍니다." }),
+    } }, [el("h2", { text: "회의록 직접 쓰기" }), el("p", { class: "sub", text: "클로바노트 파일을 올리거나 내용을 붙여 넣습니다. '다음 할 일' 아래에 '[이름] 할 일' 형식으로 적어 두면 '할 일 뽑기'가 담당자까지 찾아 줍니다." }),
+      el("div", { class: "row", style: "margin-top:4px" }, [fileBtn, file, el("span", { class: "sub", style: "margin:0", text: "클로바노트에서 내보낸 TXT·DOCX 파일을 고르면 아래 칸이 채워집니다." })]),
       el("label", { for: "m-title", text: "제목" }), title, el("label", { for: "m-date", text: "날짜" }), date, el("label", { for: "m-body", text: "내용" }), body, el("div", { class: "row", style: "margin-top:14px" }, [save, msg])]));
     var keyCard = el("div", { class: "card" });
     view.appendChild(keyCard);
@@ -731,10 +757,12 @@
   }
 
   // 날짜가 바뀌면(자정이 지나면) 오늘 칸을 새로 연다. 창을 열어 둔 채 넘어가도 어제 기록을 고치지 않게.
-  var kstNow = function () { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date()); };
+  var kstNow = function (shiftHours) { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date(Date.now() - (shiftHours || 0) * 3600000)); };
+  // 하루 기록은 다음 날 오전 9시에 마감되므로, 날짜가 바뀔 때와 9시가 지날 때 다시 불러온다.
   function checkDay() {
     var d = state.data;
-    if (!d || d.needMember || !d.today || kstNow() === d.today || document.hidden) return;
+    if (!d || d.needMember || !d.today || document.hidden) return;
+    if (kstNow() === d.today && (!d.logDay || kstNow(9) === d.logDay)) return;
     call("bootstrap").then(function (nd) { keep(nd); if (state.tab === "today" || state.tab === "calendar") render(); else { headerLine(); renderTabs(); } }).catch(function () {});
   }
   setInterval(checkDay, 60000);
