@@ -95,6 +95,25 @@
   .day h3.today{color:var(--bad)}
   .ev{display:flex;gap:10px;padding:5px 0;font-size:15px}
   .ev .when{color:var(--muted);width:92px;flex:none;font-size:14px}
+  .mhead{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .mhead h2{margin:0;font-size:19px;min-width:130px;text-align:center}
+  .mhead button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 11px;font:inherit;cursor:pointer}
+  .month{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line)}
+  .month .dow{font-size:12px;color:var(--muted);text-align:center;padding:6px 0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:#f8f9fb}
+  .month .dow.sun,.mcell.sun .num{color:var(--bad)}
+  .month .dow.sat,.mcell.sat .num{color:#1565c0}
+  .mcell{min-height:96px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:4px;cursor:pointer;background:#fff;text-align:left;font:inherit;color:inherit;display:block;width:100%;overflow:hidden}
+  .mcell:hover{background:#f6f8fb}
+  .mcell.other{background:#fafbfc}.mcell.other .num{opacity:.4}
+  .mcell.sel{outline:2px solid var(--accent);outline-offset:-2px}
+  .mcell .num{font-size:13px;font-weight:600;display:inline-block;min-width:22px;height:22px;line-height:22px;text-align:center;border-radius:50%}
+  .mcell.today .num{background:var(--accent);color:#fff}
+  .pill{display:block;font-size:11.5px;line-height:1.35;margin-top:3px;padding:1px 5px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pill.ev{background:#e3edfb;color:#1d4f91}.pill.due{background:#fdebd7;color:#8a4b00}.pill.task{background:#e3f4ea;color:#1d6b43}
+  .pill.more{background:none;color:var(--muted);padding-left:2px}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+  .legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px;background:var(--c)}
+  @media (max-width:620px){.mcell{min-height:58px;padding:3px}.pill{font-size:0;height:6px;padding:0;margin-top:2px;border-radius:3px}.pill.more{display:none}}
   @media (max-width:760px){.addrow{grid-template-columns:1fr 1fr}}
   @media (max-width:760px){.cols{grid-template-columns:1fr}.col{display:none}.col.active{display:block}.only-narrow{display:flex}.grid3{grid-template-columns:1fr}}
   @media (max-width:520px){.entry dl{grid-template-columns:1fr}.entry dt{margin-top:6px}}
@@ -525,48 +544,85 @@
     draw();
     call("board.list").then(function (r) { B = r; draw(); }).catch(function (e) { B = { ready: false, options: { status: [], area: [], owner: [] }, items: [] }; draw(); fail(e); });
   }
-  // ---------- 일정: 팀 구글 캘린더와 5분마다 주고받는다 ----------
+  // ---------- 일정: 달력으로 보고, 팀 구글 캘린더와 5분마다 주고받는다. 일정을 만들면 보드에 할 일 카드가 생긴다 ----------
   function renderCalendar() {
-    var d = state.data, box = el("div"), msg = el("span", { class: "msg", role: "status" });
+    var d = state.data, msg = el("span", { class: "msg", role: "status" });
+    var cur = new Date(d.today + "T00:00:00"); cur.setDate(1);
+    var selected = d.today, data = null;
+    var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    var ymd = function (t) { return t.getFullYear() + "-" + pad(t.getMonth() + 1) + "-" + pad(t.getDate()); };
+    var hm = function (iso) { return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso)); };
+    var kday = function (iso) { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date(iso)); };
+    var calCard = el("div", { class: "card" }), dayCard = el("div", { class: "card" });
     var title = el("input", { type: "text", id: "e-title", maxlength: "200", placeholder: "예: 남뀨 회의" });
     var date = el("input", { type: "date", id: "e-date" }); date.value = d.today;
     var start = el("input", { type: "time", id: "e-start", "aria-label": "시작" }), end = el("input", { type: "time", id: "e-end", "aria-label": "끝" });
-    var place = el("input", { type: "text", id: "e-place", maxlength: "200", placeholder: "장소 또는 미트 주소(선택)" });
+    var place = el("input", { type: "text", id: "e-place", maxlength: "200", placeholder: "장소 또는 회의 링크(선택)" });
     var save = el("button", { class: "btn", type: "submit", text: "일정 추가" });
-    view.appendChild(el("form", { class: "card", onsubmit: function (ev) {
+    var form = el("form", { class: "card", onsubmit: function (ev) {
       ev.preventDefault(); msg.className = "msg bad";
       if (!title.value.trim() || !date.value) { msg.textContent = "제목과 날짜를 적어 주세요."; return; }
       save.disabled = true; msg.textContent = "";
-      call("calendar.add", { title: title.value, date: date.value, start: start.value, end: end.value, location: place.value }).then(function (r) { title.value = ""; start.value = ""; end.value = ""; place.value = ""; msg.className = "msg"; msg.textContent = "추가했습니다. 5분 안에 팀 구글 캘린더에도 들어갑니다."; draw(r); })
+      var w = gridRange();
+      call("calendar.add", { title: title.value, date: date.value, start: start.value, end: end.value, location: place.value, listFrom: w.from, listDays: 42 })
+        .then(function (r) { selected = date.value; title.value = ""; start.value = ""; end.value = ""; place.value = ""; msg.className = "msg"; msg.textContent = "추가했습니다. 보드에 할 일 카드가 생겼고, 5분 안에 구글 캘린더에도 들어갑니다."; data = r; draw(); })
         .catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.textContent = say(e); }).then(function () { save.disabled = false; });
-    } }, [el("h2", { text: "일정 추가" }), el("p", { class: "sub", text: "시간을 비우면 하루 종일 일정이 됩니다. 구글 캘린더 '" + project.name + "'에서 만든 일정도 5분 안에 여기에 보입니다." }),
+    } }, [el("h2", { text: "일정 추가" }), el("p", { class: "sub", text: "시간을 비우면 하루 종일 일정이 됩니다. 일정을 추가하면 보드에 같은 날 마감인 '할 일' 카드가 자동으로 생깁니다." }),
       el("label", { for: "e-title", text: "제목" }), title,
       el("div", { class: "grid3" }, [el("div", {}, [el("label", { for: "e-date", text: "날짜" }), date]), el("div", {}, [el("label", { for: "e-start", text: "시작" }), start]), el("div", {}, [el("label", { for: "e-end", text: "끝" }), end])]),
-      el("label", { for: "e-place", text: "장소" }), place, el("div", { class: "row", style: "margin-top:14px" }, [save, msg])]));
-    view.appendChild(el("div", { class: "card" }, [el("h2", { text: "다가오는 일정" }), box]));
-    if (d.project.calendarUrl) view.appendChild(el("div", { class: "card" }, [el("h2", { text: "구글 캘린더" }), el("iframe", { class: "cal", src: d.project.calendarUrl, title: "팀 공유 캘린더", loading: "lazy" })]));
-    var DOW = DAYS;
-    function hm(iso) { var t = new Date(iso); return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(t); }
-    function day(iso) { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date(iso)); }
-    function draw(r) {
-      box.textContent = "";
-      box.appendChild(el("p", { class: "sub", text: r.syncedAt ? "구글 캘린더와 마지막으로 맞춘 때: " + when(r.syncedAt) : "아직 구글 캘린더와 연결되지 않았습니다. 회의를 여는 계정의 Apps Script에서 installTrigger를 다시 실행해 주세요." }));
-      var byDay = {};
-      function put(k, item) { (byDay[k] = byDay[k] || []).push(item); }
-      r.events.forEach(function (e) { put(e.all_day ? day(e.starts_at) : day(e.starts_at), { when: e.all_day ? "하루 종일" : hm(e.starts_at) + (e.ends_at ? "~" + hm(e.ends_at) : ""), text: e.title + (e.location ? "  ·  " + e.location : ""), tag: e.pending ? "캘린더로 보내는 중" : "" }); });
-      r.dues.forEach(function (c) { put(c.due, { when: "보드 마감", text: c.title + (c.owner ? "  ·  " + c.owner : ""), tag: c.status }); });
-      r.tasks.forEach(function (t) { put(t.due, { when: "할 일 기한", text: t.title + (t.owner ? "  ·  " + t.owner : ""), tag: "" }); });
-      var keys = Object.keys(byDay).sort();
-      if (!keys.length) { box.appendChild(el("p", { class: "empty", text: "앞으로 6주 동안 일정이 없습니다." })); return; }
-      keys.forEach(function (k) {
-        var dt = new Date(k + "T00:00:00");
-        var sec = el("div", { class: "day" }, [el("h3", { class: k === d.today ? "today" : "", text: k.slice(5).replace("-", "월 ") + "일 (" + DOW[dt.getDay()] + ")" + (k === d.today ? "  오늘" : "") })]);
-        byDay[k].forEach(function (it) { sec.appendChild(el("div", { class: "ev" }, [el("span", { class: "when", text: it.when }), el("span", {}, [document.createTextNode(it.text), it.tag ? el("span", { class: "chip plain", style: "margin-left:6px", text: it.tag }) : null])])); });
-        box.appendChild(sec);
-      });
+      el("label", { for: "e-place", text: "장소" }), place, el("div", { class: "row", style: "margin-top:14px" }, [save, msg])]);
+    view.appendChild(calCard); view.appendChild(dayCard); view.appendChild(form);
+
+    function gridRange() {
+      var first = new Date(cur); first.setDate(1 - first.getDay());
+      return { from: ymd(first), first: first };
     }
-    box.appendChild(el("p", { class: "empty", text: "불러오는 중입니다." }));
-    call("calendar.list", { days: 42 }).then(draw).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); box.textContent = ""; box.appendChild(el("p", { class: "empty", text: say(e) })); });
+    function items(k) {
+      if (!data) return [];
+      var out = [];
+      data.events.forEach(function (e) {
+        var s0 = kday(e.starts_at), e0 = e.ends_at ? kday(new Date(new Date(e.ends_at).getTime() - (e.all_day ? 1 : 0)).toISOString()) : s0;
+        if (k >= s0 && k <= e0) out.push({ cls: "ev", when: e.all_day ? "하루 종일" : hm(e.starts_at) + (e.ends_at ? "~" + hm(e.ends_at) : ""), text: e.title, sub: e.location, tag: e.pending ? "캘린더로 보내는 중" : "" });
+      });
+      data.dues.forEach(function (c) { if (c.due === k) out.push({ cls: "due", when: "보드 마감", text: c.title, sub: c.owner, tag: c.status }); });
+      data.tasks.forEach(function (t) { if (t.due === k) out.push({ cls: "task", when: "할 일", text: t.title, sub: t.owner, tag: "" }); });
+      return out;
+    }
+    function draw() {
+      calCard.textContent = "";
+      var head = el("div", { class: "mhead" }, [
+        el("button", { type: "button", "aria-label": "이전 달", text: "‹", onclick: function () { cur.setMonth(cur.getMonth() - 1); load(); } }),
+        el("h2", { text: cur.getFullYear() + "년 " + (cur.getMonth() + 1) + "월" }),
+        el("button", { type: "button", "aria-label": "다음 달", text: "›", onclick: function () { cur.setMonth(cur.getMonth() + 1); load(); } }),
+        el("button", { type: "button", text: "오늘", onclick: function () { cur = new Date(d.today + "T00:00:00"); cur.setDate(1); selected = d.today; load(); } })]);
+      calCard.appendChild(head);
+      var grid = el("div", { class: "month" });
+      ["일", "월", "화", "수", "목", "금", "토"].forEach(function (w, i) { grid.appendChild(el("div", { class: "dow" + (i === 0 ? " sun" : i === 6 ? " sat" : ""), text: w })); });
+      var t = new Date(gridRange().first);
+      for (var i = 0; i < 42; i++) {
+        var k = ymd(t), list = items(k);
+        var cell = el("button", { type: "button", class: "mcell" + (t.getMonth() !== cur.getMonth() ? " other" : "") + (k === d.today ? " today" : "") + (k === selected ? " sel" : "") + (t.getDay() === 0 ? " sun" : t.getDay() === 6 ? " sat" : ""),
+          "aria-label": k + " 일정 " + list.length + "개", onclick: (function (kk) { return function () { selected = kk; date.value = kk; draw(); }; })(k) }, [el("span", { class: "num", text: String(t.getDate()) })]);
+        list.slice(0, 3).forEach(function (it) { cell.appendChild(el("span", { class: "pill " + it.cls, text: it.text, title: it.when + " " + it.text })); });
+        if (list.length > 3) cell.appendChild(el("span", { class: "pill more", text: "+" + (list.length - 3) + "개" }));
+        grid.appendChild(cell);
+        t.setDate(t.getDate() + 1);
+      }
+      calCard.appendChild(grid);
+      calCard.appendChild(el("div", { class: "legend" }, [el("span", { style: "--c:#c9daf5", text: "일정" }), el("span", { style: "--c:#f6d3ab", text: "보드 마감" }), el("span", { style: "--c:#c3e6d1", text: "할 일 기한" }),
+        el("span", { style: "--c:transparent", text: data && data.syncedAt ? "구글 캘린더와 맞춘 때 " + when(data.syncedAt) : "구글 캘린더 연결 전" })]));
+      dayCard.textContent = "";
+      var dt = new Date(selected + "T00:00:00"), list2 = items(selected);
+      dayCard.appendChild(el("h2", { text: (dt.getMonth() + 1) + "월 " + dt.getDate() + "일 (" + DAYS[dt.getDay()] + ")" + (selected === d.today ? "  오늘" : "") }));
+      if (!list2.length) dayCard.appendChild(el("p", { class: "empty", text: "이 날은 일정이 없습니다. 아래에서 추가할 수 있습니다." }));
+      list2.forEach(function (it) { dayCard.appendChild(el("div", { class: "ev" }, [el("span", { class: "when", text: it.when }), el("span", {}, [el("span", { class: "pill " + it.cls, style: "display:inline;font-size:14px;padding:2px 7px", text: it.text }), it.sub ? document.createTextNode("  " + it.sub) : null, it.tag ? el("span", { class: "chip plain", style: "margin-left:6px", text: it.tag }) : null])])); });
+    }
+    function load() {
+      draw();
+      call("calendar.list", { from: gridRange().from, days: 42 }).then(function (r) { data = r; draw(); }).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.className = "msg bad"; msg.textContent = say(e); });
+    }
+    if (d.project.calendarUrl) view.appendChild(el("div", { class: "card" }, [el("h2", { text: "구글 캘린더" }), el("iframe", { class: "cal", src: d.project.calendarUrl, title: "팀 공유 캘린더", loading: "lazy" })]));
+    load();
   }
   // ---------- 회의록: 구글 미트(Gemini 메모)에서 자동으로 들어오고, 직접 쓸 수도 있다 ----------
   function renderMeetings() {
@@ -749,7 +805,7 @@
       tabsEl.appendChild(b);
     });
   }
-  function render() { renderTabs(); view.textContent = ""; view.className = state.tab === "board" ? "wide" : ""; TABS.filter(function (t) { return t.id === state.tab; })[0].fn(); }
+  function render() { renderTabs(); view.textContent = ""; view.className = state.tab === "board" || state.tab === "calendar" ? "wide" : ""; TABS.filter(function (t) { return t.id === state.tab; })[0].fn(); }
   function route() {
     if (!state.data) return renderTeamGate();
     if (state.data.needMember) return renderMemberGate();
