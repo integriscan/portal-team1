@@ -113,6 +113,25 @@
   .pill.more{background:none;color:var(--muted);padding-left:2px}
   .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
   .legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px;background:var(--c)}
+  .values{margin:4px 0 0;padding-left:22px}.values li{margin:9px 0}.values b{display:block}.values span{color:var(--muted);font-size:15px}
+  .tx h3{font-size:15px;margin:14px 0 4px;color:var(--accent)}.tx h3:first-child{margin-top:2px}.tx p{margin:6px 0}.tx ul,.tx ol{margin:6px 0;padding-left:22px}.tx li{margin:4px 0}
+  .org{overflow-x:auto;padding:6px 0 4px}
+  .okids{display:flex;gap:12px;justify-content:center;align-items:flex-start;flex-wrap:wrap;position:relative}
+  .onode{display:flex;flex-direction:column;align-items:center;position:relative}
+  .onode>.okids{margin-top:16px;padding-top:16px;border-top:2px solid var(--line)}
+  .onode>.okids::before{content:"";position:absolute;top:-18px;left:50%;height:16px;border-left:2px solid var(--line)}
+  .obox{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:150px;max-width:240px;text-align:center}
+  .okids.top>.onode>.obox{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+  .obox .orole{display:block;font-size:12px;color:var(--accent);font-weight:700}
+  .obox b{display:block;font-size:16px}
+  .obox .odoes{display:block;font-size:13px;color:var(--muted);margin-top:3px;line-height:1.45}
+  .obox.vacant{border-style:dashed;background:#fafbfc}.obox.vacant b{color:var(--muted)}
+  .wtable{width:100%;border-collapse:collapse;font-size:15px}
+  .wtable th,.wtable td{border-top:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:top}
+  .wtable th{color:var(--muted);font-size:13px;font-weight:600;border-top:0}
+  .wtable td:nth-child(2),.wtable td:nth-child(3){white-space:nowrap}
+  details.rev{border-top:1px solid var(--line);padding:7px 0}details.rev summary{cursor:pointer;font-size:14px}
+  details.rev pre{white-space:pre-wrap;word-break:break-word;font:inherit;font-size:14px;background:#f8f9fb;border-radius:8px;padding:8px 10px;margin:6px 0 0}
   @media (max-width:620px){.mcell{min-height:58px;padding:3px}.pill{font-size:0;height:6px;padding:0;margin-top:2px;border-radius:3px}.pill.more{display:none}}
   @media (max-width:760px){.addrow{grid-template-columns:1fr 1fr}}
   @media (max-width:760px){.cols{grid-template-columns:1fr}.col{display:none}.col.active{display:block}.only-narrow{display:flex}.grid3{grid-template-columns:1fr}}
@@ -152,7 +171,7 @@
     NAME_TAKEN: "이미 가입된 이름입니다. '이미 가입했어요'에서 들어와 주세요.", TOO_SHORT: "비밀번호는 6자 이상으로 정해 주세요.", TOO_SHORT_ADMIN: "8자 이상으로 정해 주세요.",
     ALREADY_SET: "이미 정해져 있습니다.", GITHUB_NOT_READY: "GitHub 연결이 아직 준비되지 않았습니다.", PULL_FIRST: "먼저 '가져오기'를 눌러 주세요.",
     GITHUB_FAILED: "GitHub와 연결하지 못했습니다. 잠시 뒤에 다시 해 주세요.", BAD_OPTION: "보드에 없는 선택지입니다. '가져오기'를 한 뒤 다시 골라 주세요.",
-    BAD_DATE: "마감 날짜를 다시 골라 주세요.", TOO_SHORT_KEY: "연결 키가 너무 짧습니다.", ADMIN_ONLY: "관리 권한이 필요합니다.", NOT_FOUND: "카드를 찾지 못했습니다. '가져오기'를 눌러 주세요.", NETWORK: "연결하지 못했습니다. 잠시 뒤에 다시 해 주세요."
+    BAD_DATE: "마감 날짜를 다시 골라 주세요.", TOO_SHORT_KEY: "연결 키가 너무 짧습니다.", ADMIN_ONLY: "관리 권한이 필요합니다.", NOT_FOUND: "카드를 찾지 못했습니다. '가져오기'를 눌러 주세요.", BAD_SECTION: "없는 칸입니다. 새로 고침해 주세요.", NETWORK: "연결하지 못했습니다. 잠시 뒤에 다시 해 주세요."
   };
   var DAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -308,7 +327,8 @@
     function fail(e) { if (expired(e)) return leave("다시 들어와 주세요."); msg.className = "msg bad"; msg.textContent = say(e); }
     function add() {
       if (!title.value.trim()) { title.focus(); return; }
-      call("task.add", { title: title.value, owner: owner.value, due: due.value }).then(function (r) { title.value = ""; due.value = ""; apply(r); title.focus(); }).catch(fail);
+      // 기한을 안 고르면 오늘로 넣는다. 기한이 있어야 보드 카드와 일정에 생긴다(결정 103).
+      call("task.add", { title: title.value, owner: owner.value, due: due.value || d.today }).then(function (r) { title.value = ""; due.value = ""; apply(r); title.focus(); }).catch(fail);
     }
     title.addEventListener("keydown", function (ev) { if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); add(); } });
     function draw() {
@@ -343,7 +363,7 @@
       }).catch(fail).then(function () { carry.disabled = false; });
     } });
     card.appendChild(el("div", { class: "row", style: "justify-content:space-between" }, [head, el("div", { class: "row" }, [carry, toggle])]));
-    card.appendChild(el("p", { class: "sub", text: "끝내면 체크합니다. 안 끝난 일은 내일로 넘어갑니다." }));
+    card.appendChild(el("p", { class: "sub", text: "적고 Enter를 누르면 보드와 일정에도 생깁니다. 기한을 안 고르면 오늘입니다. 끝내면 체크하고, 안 끝난 일은 내일로 넘어갑니다." }));
     card.appendChild(list);
     card.appendChild(el("div", { class: "addrow" }, [title, owner, due, el("button", { class: "btn small", type: "button", text: "추가", onclick: add })]));
     card.appendChild(msg);
@@ -791,7 +811,123 @@
       el("label", { for: "adminpw", text: A + " 전용 비밀번호" }), input, el("div", { class: "row", style: "margin-top:14px" }, [btn, msg])]));
   }
 
+  // ---------- 우리 팀 (결정 103) ----------
+  // 새로 온 사람이 이 탭 하나로 팀을 알게 한다. 내용은 서버에 있고(공개 저장소라 이름을 코드에 넣지 않음),
+  // 누구나 고칠 수 있으며 고칠 때마다 누가 언제 무엇으로 바꿨는지 남는다.
+  var TEAM = [
+    { key: "values", name: "핵심 가치", hint: "한 줄에 하나. '제목: 설명'으로 쓰면 제목이 굵게 보입니다." },
+    { key: "project", name: "우리 프로젝트", hint: "무엇을, 누구를 위해, 왜 하는지. 빈 줄로 문단을 나눕니다. '- '로 시작하면 목록, '## '로 시작하면 소제목입니다." },
+    { key: "core", name: "프로젝트 핵심 내용", hint: "'- '로 시작하면 목록, '## '로 시작하면 소제목입니다." },
+    { key: "org", name: "조직도와 역할", hint: "한 줄에 한 사람: 직책 | 이름 | 맡는 일 | 위 직책. 맨 위 사람은 위 직책을 비웁니다. 빈자리는 이름에 '모집 중'이라고 씁니다." },
+    { key: "work", name: "핵심 업무", hint: "한 줄에 하나: 업무 | 담당 | 기한. 기한이 없으면 비웁니다." },
+    { key: "join", name: "처음 왔다면", hint: "새로 온 사람이 첫날과 첫 주에 할 일. '1. '로 시작하면 번호 목록입니다." },
+    { key: "leave", name: "떠날 때 (인수인계)", hint: "나가는 사람이 남기고 넘길 것. '1. '로 시작하면 번호 목록입니다." }
+  ];
+  function teamLines(t) { return String(t).split("\n").map(function (l) { return l.replace(/^\s*(?:[-•·]|\d+[.)])\s+/, "").trim(); }).filter(Boolean); }
+  function teamCells(l) { return l.split("|").map(function (c) { return c.trim(); }); }
+  function textView(t) {
+    var wrap = el("div", { class: "tx" }), list = null, listTag = "";
+    String(t).split("\n").forEach(function (line) {
+      var m, tag;
+      if (!line.trim()) { list = null; return; }
+      if ((m = line.match(/^##\s+(.*)/))) { list = null; wrap.appendChild(el("h3", { text: m[1] })); return; }
+      if ((m = line.match(/^\s*[-•·]\s+(.*)/))) tag = "ul";
+      else if ((m = line.match(/^\s*\d+[.)]\s+(.*)/))) tag = "ol";
+      if (tag) {
+        if (!list || listTag !== tag) { list = el(tag); listTag = tag; wrap.appendChild(list); }
+        list.appendChild(el("li", { text: m[1] }));
+        return;
+      }
+      list = null; wrap.appendChild(el("p", { text: line }));
+    });
+    return wrap;
+  }
+  function valuesView(t) {
+    var ol = el("ol", { class: "values" });
+    teamLines(t).forEach(function (l) {
+      var i = l.indexOf(":"), li = el("li");
+      if (i > 0 && i < 40) { li.appendChild(el("b", { text: l.slice(0, i).trim() })); li.appendChild(el("span", { text: l.slice(i + 1).trim() })); }
+      else li.appendChild(el("b", { text: l }));
+      ol.appendChild(li);
+    });
+    return ol;
+  }
+  // 조직도: '위 직책'으로 이어 나무 모양으로 그린다. 이어지지 않으면 맨 위 줄에 둔다.
+  function orgView(t) {
+    var nodes = teamLines(t).map(teamCells).map(function (c) { return { role: c[0] || "", name: c[1] || "", does: c[2] || "", parent: c[3] || "", kids: [] }; });
+    var byRole = {};
+    nodes.forEach(function (n) { if (n.role && !byRole[n.role]) byRole[n.role] = n; });
+    var roots = [];
+    nodes.forEach(function (n) { var p = n.parent && byRole[n.parent]; if (p && p !== n) p.kids.push(n); else roots.push(n); });
+    if (!roots.length) { nodes.forEach(function (n) { n.kids = []; }); roots = nodes; }
+    function node(n, depth) {
+      var vacant = !n.name || /모집|비어/.test(n.name);
+      var box = el("div", { class: "onode" }, [el("div", { class: "obox" + (vacant ? " vacant" : "") }, [el("span", { class: "orole", text: n.role }), el("b", { text: n.name || "비어 있음" }), n.does ? el("span", { class: "odoes", text: n.does }) : null])]);
+      if (n.kids.length && depth < 6) box.appendChild(el("div", { class: "okids" }, n.kids.map(function (k) { return node(k, depth + 1); })));
+      return box;
+    }
+    return el("div", { class: "org" }, [el("div", { class: "okids top" }, roots.map(function (r) { return node(r, 0); }))]);
+  }
+  function workView(t) {
+    var rows = el("tbody");
+    teamLines(t).forEach(function (l) { var c = teamCells(l); rows.appendChild(el("tr", {}, [el("td", { text: c[0] || "" }), el("td", { text: c[1] || "" }), el("td", { text: c[2] || "" })])); });
+    return el("div", { style: "overflow-x:auto" }, [el("table", { class: "wtable" }, [el("thead", {}, [el("tr", {}, [el("th", { text: "업무" }), el("th", { text: "담당" }), el("th", { text: "기한" })])]), rows])]);
+  }
+  function teamCard(sec, row, redraw) {
+    var body = row ? row.body : "", content = el("div");
+    function fail(e) { if (expired(e)) return leave("다시 들어와 주세요."); content.appendChild(el("p", { class: "msg bad", text: say(e) })); }
+    function show() {
+      content.textContent = "";
+      if (!body) { content.appendChild(el("p", { class: "empty", text: "비어 있습니다. '고치기'로 채워 주세요." })); return; }
+      content.appendChild(sec.key === "org" ? orgView(body) : sec.key === "work" ? workView(body) : sec.key === "values" ? valuesView(body) : textView(body));
+    }
+    function edit() {
+      content.textContent = "";
+      var ta = el("textarea", { "aria-label": sec.name, style: "min-height:240px" }); ta.value = body;
+      var msg = el("span", { class: "msg", role: "status" });
+      var save = el("button", { class: "btn small", type: "button", text: "저장", onclick: function () {
+        save.disabled = true;
+        call("team.save", { section: sec.key, body: ta.value }).then(redraw).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); save.disabled = false; msg.className = "msg bad"; msg.textContent = say(e); });
+      } });
+      content.appendChild(el("p", { class: "sub", text: sec.hint }));
+      content.appendChild(ta);
+      content.appendChild(el("div", { class: "row", style: "margin-top:10px" }, [save, el("button", { class: "btn small ghost", type: "button", text: "취소", onclick: show }), msg]));
+      ta.focus();
+    }
+    function history() {
+      content.textContent = "";
+      content.appendChild(el("p", { class: "empty", text: "불러오는 중입니다." }));
+      call("team.history", { section: sec.key }).then(function (r) {
+        content.textContent = "";
+        if (!r.history.length) content.appendChild(el("p", { class: "empty", text: "바뀐 기록이 없습니다." }));
+        r.history.forEach(function (h) { content.appendChild(el("details", { class: "rev" }, [el("summary", { text: h.updated_at + "  ·  " + h.updated_by }), el("pre", { text: h.body || "(비움)" })])); });
+        content.appendChild(el("button", { class: "btn small ghost", type: "button", text: "닫기", style: "margin-top:8px", onclick: show }));
+      }).catch(fail);
+    }
+    var card = el("div", { class: "card" }, [
+      el("div", { class: "row", style: "justify-content:space-between" }, [el("h2", { text: sec.name }),
+        el("div", { class: "row" }, [el("button", { class: "btn small ghost", type: "button", text: "바뀐 기록", onclick: history }), el("button", { class: "btn small ghost", type: "button", text: "고치기", onclick: edit })])]),
+      el("p", { class: "sub", text: row ? "마지막 수정 " + row.updated_at + "  ·  " + row.updated_by : "아직 비어 있습니다." }),
+      content]);
+    show();
+    return card;
+  }
+  function renderTeam() {
+    var box = el("div");
+    view.appendChild(el("div", { class: "note", text: "새로 온 사람은 이 탭부터 읽습니다. 바뀐 것이 있으면 그 칸의 '고치기'로 바로 고쳐 주세요. 누가 언제 고쳤는지 남습니다." }));
+    view.appendChild(box);
+    box.appendChild(el("p", { class: "empty", text: "불러오는 중입니다." }));
+    function draw(r) {
+      var by = {};
+      (r.sections || []).forEach(function (x) { by[x.section] = x; });
+      box.textContent = "";
+      TEAM.forEach(function (sec) { box.appendChild(teamCard(sec, by[sec.key], draw)); });
+    }
+    call("team.get").then(draw).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); box.textContent = ""; box.appendChild(el("p", { class: "msg bad", text: say(e) })); });
+  }
+
   var TABS = [
+    { id: "team", name: "우리 팀", fn: renderTeam },
     { id: "today", name: "오늘", fn: renderToday }, { id: "history", name: "지난 기록", fn: renderHistory },
     { id: "weekly", name: "주간", fn: renderWeekly, dot: function (d) { return d.isMonday; } },
     { id: "board", name: "보드", fn: renderBoard }, { id: "calendar", name: "일정", fn: renderCalendar }, { id: "meetings", name: "회의록", fn: renderMeetings },
@@ -809,6 +945,7 @@
   function route() {
     if (!state.data) return renderTeamGate();
     if (state.data.needMember) return renderMemberGate();
+    if (!local.get("seenTeam")) { state.tab = "team"; local.set("seenTeam", "1"); }   // 이 기기에서 처음이면 팀 소개부터
     nav.hidden = false; logoutBtn.hidden = false; headerLine(); render();
   }
 
