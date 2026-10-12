@@ -30,6 +30,7 @@
   label small{font-weight:400;color:var(--muted)}
   textarea,input[type=text],input[type=password],input[type=date],input[type=time],select{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 11px;font:inherit;background:#fff;color:var(--ink)}
   textarea{min-height:62px;resize:vertical}
+  .daily-record textarea{min-height:140px}
   textarea:focus,input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .btn{border:0;border-radius:8px;background:var(--accent);color:#fff;font:inherit;font-weight:700;padding:11px 18px;cursor:pointer}
@@ -307,7 +308,7 @@
     view.appendChild(checklistCard());
     var mine = d.todayLogs.filter(function (x) { return x.author === d.me; })[0];
     var form = fieldsForm(DAILY, mine, function (body) { return call("log.save", body).then(function (nd) { keep(nd); render(); }); });
-    view.appendChild(el("div", { class: "card" }, [el("h2", { text: d.me + "님의 " + (d.logDay && d.logDay !== d.today ? "어제 기록 (" + d.logDay.slice(5) + ")" : "오늘 기록") }), el("p", { class: "sub", text: d.logDay && d.logDay !== d.today ? "어제 기록은 오늘 오전 9시까지 쓰고 고칠 수 있습니다. 9시가 지나면 오늘 칸이 열립니다." : "하루에 한 번. 마감은 다음 날 오전 9시이고, 그 전에 다시 저장하면 고쳐집니다." }), form.node]));
+    view.appendChild(el("div", { class: "card" + (project.key === "team1" ? " daily-record" : "") }, [el("h2", { text: d.me + "님의 " + (d.logDay && d.logDay !== d.today ? "어제 기록 (" + d.logDay.slice(5) + ")" : "오늘 기록") }), el("p", { class: "sub", text: d.logDay && d.logDay !== d.today ? "어제 기록은 오늘 오전 9시까지 쓰고 고칠 수 있습니다. 9시가 지나면 오늘 칸이 열립니다." : "하루에 한 번. 마감은 다음 날 오전 9시이고, 그 전에 다시 저장하면 고쳐집니다." }), form.node]));
     var feed = el("div", { class: "card" }, [el("h2", { text: "오늘 팀 기록" })]);
     if (!d.todayLogs.length) feed.appendChild(el("p", { class: "empty", text: "아직 오늘 기록이 없습니다." }));
     d.todayLogs.forEach(function (x) { feed.appendChild(entryNode(DAILY, x)); });
