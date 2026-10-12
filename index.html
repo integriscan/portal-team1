@@ -780,6 +780,109 @@
     view.appendChild(soon("운영 기록", "준비 중입니다. 쓰임이 확인된 것부터 붙입니다.", [
       ["분기 목표", "목표 3개와 진행률"], ["결정 로그", "번호를 붙인 결정 기록"], ["고객·기관 접촉 기록", "누구와 언제 무슨 이야기를 했는지"]]));
   }
+  function teamLines(t) { return String(t).split("\n").map(function (l) { return l.replace(/^\s*(?:[-•·]|\d+[.)])\s+/, "").trim(); }).filter(Boolean); }
+  function teamCells(l) { return l.split("|").map(function (c) { return c.trim(); }); }
+  function textView(t) {
+    var wrap = el("div", { class: "tx" }), list = null, listTag = "";
+    String(t).split("\n").forEach(function (line) {
+      var m, tag;
+      if (!line.trim()) { list = null; return; }
+      if ((m = line.match(/^##\s+(.*)/))) { list = null; wrap.appendChild(el("h3", { text: m[1] })); return; }
+      if ((m = line.match(/^\s*[-•·]\s+(.*)/))) tag = "ul";
+      else if ((m = line.match(/^\s*\d+[.)]\s+(.*)/))) tag = "ol";
+      if (tag) {
+        if (!list || listTag !== tag) { list = el(tag); listTag = tag; wrap.appendChild(list); }
+        list.appendChild(el("li", { text: m[1] }));
+        return;
+      }
+      list = null; wrap.appendChild(el("p", { text: line }));
+    });
+    return wrap;
+  }
+  function valuesView(t) {
+    var ol = el("ol", { class: "values" });
+    teamLines(t).forEach(function (l) {
+      var i = l.indexOf(":"), li = el("li");
+      if (i > 0 && i < 40) { li.appendChild(el("b", { text: l.slice(0, i).trim() })); li.appendChild(el("span", { text: l.slice(i + 1).trim() })); }
+      else li.appendChild(el("b", { text: l }));
+      ol.appendChild(li);
+    });
+    return ol;
+  }
+  // 조직도: '위 직책'으로 이어 나무 모양으로 그린다. 이어지지 않으면 맨 위 줄에 둔다.
+  function orgView(t) {
+    var nodes = teamLines(t).map(teamCells).map(function (c) { return { role: c[0] || "", name: c[1] || "", does: c[2] || "", parent: c[3] || "", kids: [] }; });
+    var byRole = {};
+    nodes.forEach(function (n) { if (n.role && !byRole[n.role]) byRole[n.role] = n; });
+    var roots = [];
+    nodes.forEach(function (n) { var p = n.parent && byRole[n.parent]; if (p && p !== n) p.kids.push(n); else roots.push(n); });
+    if (!roots.length) { nodes.forEach(function (n) { n.kids = []; }); roots = nodes; }
+    function node(n, depth) {
+      var vacant = !n.name || /모집|비어/.test(n.name);
+      var box = el("div", { class: "onode" }, [el("div", { class: "obox" + (vacant ? " vacant" : "") }, [el("span", { class: "orole", text: n.role }), el("b", { text: n.name || "비어 있음" }), n.does ? el("span", { class: "odoes", text: n.does }) : null])]);
+      if (n.kids.length && depth < 6) box.appendChild(el("div", { class: "okids" }, n.kids.map(function (k) { return node(k, depth + 1); })));
+      return box;
+    }
+    return el("div", { class: "org" }, [el("div", { class: "okids top" }, roots.map(function (r) { return node(r, 0); }))]);
+  }
+  function workView(t) {
+    var rows = el("tbody");
+    teamLines(t).forEach(function (l) { var c = teamCells(l); rows.appendChild(el("tr", {}, [el("td", { text: c[0] || "" }), el("td", { text: c[1] || "" }), el("td", { text: c[2] || "" })])); });
+    return el("div", { style: "overflow-x:auto" }, [el("table", { class: "wtable" }, [el("thead", {}, [el("tr", {}, [el("th", { text: "업무" }), el("th", { text: "담당" }), el("th", { text: "기한" })])]), rows])]);
+  }
+  function teamCard(sec, row, redraw) {
+    var body = row ? row.body : "", content = el("div");
+    function fail(e) { if (expired(e)) return leave("다시 들어와 주세요."); content.appendChild(el("p", { class: "msg bad", text: say(e) })); }
+    function show() {
+      content.textContent = "";
+      if (!body) { content.appendChild(el("p", { class: "empty", text: "비어 있습니다. '고치기'로 채워 주세요." })); return; }
+      content.appendChild(sec.key === "org" ? orgView(body) : sec.key === "work" ? workView(body) : sec.key === "values" ? valuesView(body) : textView(body));
+    }
+    function edit() {
+      content.textContent = "";
+      var ta = el("textarea", { "aria-label": sec.name, style: "min-height:240px" }); ta.value = body;
+      var msg = el("span", { class: "msg", role: "status" });
+      var save = el("button", { class: "btn small", type: "button", text: "저장", onclick: function () {
+        save.disabled = true;
+        call("team.save", { section: sec.key, body: ta.value }).then(redraw).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); save.disabled = false; msg.className = "msg bad"; msg.textContent = say(e); });
+      } });
+      content.appendChild(el("p", { class: "sub", text: sec.hint }));
+      content.appendChild(ta);
+      content.appendChild(el("div", { class: "row", style: "margin-top:10px" }, [save, el("button", { class: "btn small ghost", type: "button", text: "취소", onclick: show }), msg]));
+      ta.focus();
+    }
+    function history() {
+      content.textContent = "";
+      content.appendChild(el("p", { class: "empty", text: "불러오는 중입니다." }));
+      call("team.history", { section: sec.key }).then(function (r) {
+        content.textContent = "";
+        if (!r.history.length) content.appendChild(el("p", { class: "empty", text: "바뀐 기록이 없습니다." }));
+        r.history.forEach(function (h) { content.appendChild(el("details", { class: "rev" }, [el("summary", { text: h.updated_at + "  ·  " + h.updated_by }), el("pre", { text: h.body || "(비움)" })])); });
+        content.appendChild(el("button", { class: "btn small ghost", type: "button", text: "닫기", style: "margin-top:8px", onclick: show }));
+      }).catch(fail);
+    }
+    var card = el("div", { class: "card" }, [
+      el("div", { class: "row", style: "justify-content:space-between" }, [el("h2", { text: sec.name }),
+        el("div", { class: "row" }, [el("button", { class: "btn small ghost", type: "button", text: "바뀐 기록", onclick: history }), el("button", { class: "btn small ghost", type: "button", text: "고치기", onclick: edit })])]),
+      el("p", { class: "sub", text: row ? "마지막 수정 " + row.updated_at + "  ·  " + row.updated_by : "아직 비어 있습니다." }),
+      content]);
+    show();
+    return card;
+  }
+  function renderTeam() {
+    var box = el("div");
+    view.appendChild(el("div", { class: "note", text: "새로 온 사람은 이 탭부터 읽습니다. 바뀐 것이 있으면 그 칸의 '고치기'로 바로 고쳐 주세요. 누가 언제 고쳤는지 남습니다." }));
+    view.appendChild(box);
+    box.appendChild(el("p", { class: "empty", text: "불러오는 중입니다." }));
+    function draw(r) {
+      var by = {};
+      (r.sections || []).forEach(function (x) { by[x.section] = x; });
+      box.textContent = "";
+      TEAM.forEach(function (sec) { box.appendChild(teamCard(sec, by[sec.key], draw)); });
+    }
+    call("team.get").then(draw).catch(function (e) { if (expired(e)) return leave("다시 들어와 주세요."); box.textContent = ""; box.appendChild(el("p", { class: "msg bad", text: say(e) })); });
+  }
+
   var TABS = [
     { id: "team", name: "우리 팀", fn: renderTeam },
     { id: "today", name: "오늘", fn: renderToday }, { id: "history", name: "지난 기록", fn: renderHistory },
