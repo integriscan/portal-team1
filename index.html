@@ -303,7 +303,7 @@
     d.members.forEach(function (m) {
       people.appendChild(el("div", { class: "person" }, [el("b", { text: m.name }), el("span", { class: m.wroteToday ? "done" : "todo", text: m.wroteToday ? "오늘 작성함" : "아직 안 씀" }), el("span", { class: "todo", text: "  ·  연속 " + m.streak + "일" })]));
     });
-    view.appendChild(el("div", { class: "card" }, [el("h2", { text: "오늘 현황" }), el("p", { class: "sub", text: "연속 제출은 평일 기준입니다. 주말은 끊기지 않습니다." }), people]));
+    view.appendChild(el("div", { class: "card" }, [el("h2", { text: "오늘 현황" }), el("p", { class: "sub", text: "주말에 쓴 날도 연속에 들어갑니다. 주말에 안 쓴 날은 건너뛰고, 평일을 빠뜨리면 끊깁니다." }), people]));
     view.appendChild(checklistCard());
     var mine = d.todayLogs.filter(function (x) { return x.author === d.me; })[0];
     var form = fieldsForm(DAILY, mine, function (body) { return call("log.save", body).then(function (nd) { keep(nd); render(); }); });
