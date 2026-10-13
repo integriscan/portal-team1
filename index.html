@@ -48,6 +48,16 @@
   .entry dl{margin:8px 0 0;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:15px}
   .entry dt{color:var(--muted);white-space:nowrap}
   .entry dd{margin:0;white-space:pre-wrap;word-break:break-word}
+  .team-today-feed .team-record-entry{border:0;padding:0}
+  .team-today-feed .team-record-entry+.team-record-entry{border-top:2px solid var(--line);margin-top:28px;padding-top:24px}
+  .team-today-feed .team-record-person{display:flex;align-items:center;gap:10px;padding:4px 0 18px}
+  .team-today-feed .team-record-avatar{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:14px;flex:none}
+  .team-today-feed .team-record-section{border-top:1px solid var(--line);padding:22px 0 26px}
+  .team-today-feed .team-record-section:last-child{padding-bottom:0}
+  .team-today-feed .team-record-label{display:block;margin:0 0 13px;color:var(--accent);font-size:14px;font-weight:700}
+  .team-today-feed .team-record-content{font-size:16px;line-height:1.65}
+  .team-today-feed .team-record-paragraph{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+  .team-today-feed .team-record-paragraph+.team-record-paragraph{margin-top:30px}
   .empty{color:var(--muted);font-size:15px;padding:6px 0}
   .soon li{margin:5px 0}
   .lock{display:inline-block;background:#eceff3;color:var(--muted);border-radius:999px;font-size:12px;padding:1px 8px;margin-left:6px}
@@ -289,6 +299,22 @@
     fields.forEach(function (f) { if (!log[f.key]) return; dl.appendChild(el("dt", { text: f.label })); dl.appendChild(el("dd", { text: log[f.key] })); });
     return el("div", { class: "entry" }, [el("div", {}, [el("span", { class: "who", text: log.author }), meta ? el("span", { class: "meta", text: meta }) : null]), dl]);
   }
+  function teamTodayEntryNode(fields, log) {
+    var sections = [];
+    fields.forEach(function (f) {
+      if (!log[f.key] || !String(log[f.key]).trim()) return;
+      var content = el("div", { class: "team-record-content" });
+      String(log[f.key]).replace(/\r\n?/g, "\n").split(/\n+/).forEach(function (part) {
+        if (part.trim()) content.appendChild(el("p", { class: "team-record-paragraph", text: part.replace(/\s+$/, "") }));
+      });
+      sections.push(el("section", { class: "team-record-section" }, [el("h3", { class: "team-record-label", text: f.label }), content]));
+    });
+    var person = el("div", { class: "team-record-person" }, [
+      el("span", { class: "team-record-avatar", "aria-hidden": "true", text: String(log.author || "?").charAt(0) }),
+      el("span", { class: "who", text: log.author })
+    ]);
+    return el("div", { class: "entry team-record-entry" }, [person].concat(sections));
+  }
   function soon(title, sub, lines) {
     var ul = el("ul", { class: "soon" });
     lines.forEach(function (t) { var li = el("li"); li.appendChild(el("b", { text: t[0] })); if (t[2]) li.appendChild(el("span", { class: "lock", text: t[2] })); li.appendChild(document.createTextNode(t[1] ? ": " + t[1] : "")); ul.appendChild(li); });
@@ -308,9 +334,10 @@
     var mine = d.todayLogs.filter(function (x) { return x.author === d.me; })[0];
     var form = fieldsForm(DAILY, mine, function (body) { return call("log.save", body).then(function (nd) { keep(nd); render(); }); });
     view.appendChild(el("div", { class: "card" }, [el("h2", { text: d.me + "님의 " + (d.logDay && d.logDay !== d.today ? "어제 기록 (" + d.logDay.slice(5) + ")" : "오늘 기록") }), el("p", { class: "sub", text: d.logDay && d.logDay !== d.today ? "어제 기록은 오늘 오전 9시까지 쓰고 고칠 수 있습니다. 9시가 지나면 오늘 칸이 열립니다." : "하루에 한 번. 마감은 다음 날 오전 9시이고, 그 전에 다시 저장하면 고쳐집니다." }), form.node]));
-    var feed = el("div", { class: "card" }, [el("h2", { text: "오늘 팀 기록" })]);
+    var teamFeed = project.key === "team1";
+    var feed = el("div", { class: "card" + (teamFeed ? " team-today-feed" : "") }, [el("h2", { text: "오늘 팀 기록" })]);
     if (!d.todayLogs.length) feed.appendChild(el("p", { class: "empty", text: "아직 오늘 기록이 없습니다." }));
-    d.todayLogs.forEach(function (x) { feed.appendChild(entryNode(DAILY, x)); });
+    d.todayLogs.forEach(function (x) { feed.appendChild(teamFeed ? teamTodayEntryNode(DAILY, x) : entryNode(DAILY, x)); });
     view.appendChild(feed);
   }
 
