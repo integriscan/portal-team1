@@ -11,17 +11,58 @@ const kstDate = (isoStr: string) => new Intl.DateTimeFormat("en-CA", { timeZone:
 const taskCardTitle = (t: { title: string; owner: string }) => t.owner ? `${t.title} (${t.owner})` : t.title;
 
 // 기한이 있는 할 일 중 아직 카드가 없는 것을 보드 카드로 만든다(일정에 보이는 할 일은 모두 보드에도 있게).
-async function linkTasks(sql: Sql, key: string, me: string, ids?: number[]): Promise<number[]> {
-  const rows = await sql`select id, title, owner, to_char(due, 'YYYY-MM-DD') as due, done from portal.task
-    where project_key = ${key} and not removed and due is not null and board_item_id is null ${ids ? sql`and id = any(${ids})` : sql``} order by id limit 50`;
+async function linkTasks(sql: Sql, key: string, me: string, ids?: number[], limit = 50): Promise<number[]> {
+  const rows = await sql`select id, title, owner, to_char(due, 'YYYY-MM-DD') as due, done, detail, log_ref from portal.task
+    where project_key = ${key} and not removed and due is not null and board_item_id is null ${ids ? sql`and id = any(${ids})` : sql``} order by id limit ${limit}`;
   const made: number[] = [];
   for (const t of rows) {
-    const cardId = await cardFromEvent(sql, key, me, taskCardTitle(t), t.due, "체크리스트 할 일에서 만든 카드");
+    const note = t.detail || (t.log_ref ? "하루 기록의 '내일 할 일'에서 만든 카드" : "체크리스트 할 일에서 만든 카드");
+    const cardId = await cardFromEvent(sql, key, me, taskCardTitle(t), t.due, note);
     await sql`update portal.task set board_item_id = ${cardId} where id = ${t.id}`;
     if (t.done) await setCardDone(sql, key, me, cardId, true);
     made.push(cardId);
   }
   return made;
+}
+
+// 하루 기록·체크리스트를 보드와 일정에 잇는 기능은 프로젝트마다 켠다(portal.project.log_tasks).
+const logTasksOn = async (sql: Sql, key: string) => !!(await sql`select log_tasks from portal.project where key = ${key}`)[0]?.log_tasks;
+
+// '내일 할 일' 글을 항목으로 나눈다: '- '로 시작하는 줄이 있으면 그 줄만, 없으면 줄마다, 한 줄이면 쉼표마다.
+// ': ' 앞은 제목, 뒤는 카드 설명.
+export function splitNext(text: string): { title: string; detail: string }[] {
+  const bullet = /^\s*[-*•·▪◦]\s*/;
+  const lines = String(text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  let parts = lines.some((l) => bullet.test(l)) ? lines.filter((l) => bullet.test(l)) : lines;
+  if (parts.length === 1) parts = parts[0].split(/[,，]/);
+  const out: { title: string; detail: string }[] = [], seen = new Set<string>();
+  for (const raw of parts) {
+    const l = raw.replace(/^\s*(?:[-*•·▪◦]|\d+[.)])\s*/, "").trim();
+    const i = l.search(/:\s/);
+    const title = clip((i > 0 ? l.slice(0, i) : l).replace(/[.。]+$/, ""), 300), detail = i > 0 ? clip(l.slice(i + 1), 2000) : "";
+    if (title.length < 2 || seen.has(title)) continue;
+    seen.add(title);
+    out.push({ title, detail });
+  }
+  return out.slice(0, 20);
+}
+
+// 하루 기록을 저장하면 '내일 할 일'을 다음 날 기한의 할 일로 만들고 보드 카드로 올린다(일정 탭에도 보인다).
+// 기록에서 지운 항목은 체크리스트에서도 빼고(끝낸 것은 남김), 이미 있는 항목은 다시 만들지 않는다.
+export async function tasksFromLog(sql: Sql, key: string, author: string, logDate: string, next: string) {
+  if (!await logTasksOn(sql, key)) return;
+  const ref = `${author}|${logDate}`, items = splitNext(next);
+  const have = await sql`select id, title, done from portal.task where project_key = ${key} and log_ref = ${ref} and not removed`;
+  const keep = new Set(items.map((it) => it.title)), old = new Set(have.map((t: any) => t.title));
+  for (const t of have) if (!t.done && !keep.has(t.title)) await sql`update portal.task set removed = true where id = ${t.id}`;
+  const ids: number[] = [];
+  for (const it of items) {
+    if (old.has(it.title)) continue;
+    const [row] = await sql`insert into portal.task (project_key, title, owner, due, detail, log_ref, created_by)
+      values (${key}, ${it.title}, ${author}, ${logDate}::date + 1, ${it.detail || null}, ${ref}, ${author}) returning id`;
+    ids.push(Number(row.id));
+  }
+  if (ids.length) await pushItems(sql, key, author, await linkTasks(sql, key, author, ids));
 }
 
 // ---------- 체크리스트 ----------
@@ -41,10 +82,12 @@ export async function taskAction(sql: Sql, key: string, me: string, action: stri
     const items = Array.isArray(b.items) ? b.items.slice(0, 30) : [b];
     let added = 0;
     const newIds: number[] = [];
+    // 켜진 프로젝트에서는 기한을 안 고른 할 일도 오늘 기한으로 넣어 보드와 일정에 보이게 한다(회의록 '할 일 뽑기' 포함).
+    const fallback = await logTasksOn(sql, key) ? today : null;
     for (const it of items as Record<string, unknown>[]) {
       const title = clip(it.title, 300);
       if (!title) continue;
-      const due = isDate(it.due) ? it.due : null, owner = clip(it.owner, 20), mid = Number(it.meetingId) || null;
+      const due = isDate(it.due) ? it.due : fallback, owner = clip(it.owner, 20), mid = Number(it.meetingId) || null;
       const [row] = await sql`insert into portal.task (project_key, title, owner, due, meeting_id, created_by) values (${key}, ${title}, ${owner}, ${due}, ${mid}, ${me}) returning id`;
       newIds.push(Number(row.id));
       added++;
@@ -79,8 +122,9 @@ export async function calendarAction(sql: Sql, key: string, me: string, action: 
       where project_key = ${key} and not removed and due between ${from}::date and ${from}::date + ${days}::int
         and id not in (select board_item_id from portal.task where project_key = ${key} and board_item_id is not null)
         and id not in (select board_item_id from portal.cal_event where project_key = ${key} and board_item_id is not null) order by due`;
-    const tasks = await sql`select id, title, owner, to_char(due, 'YYYY-MM-DD') as due from portal.task
-      where project_key = ${key} and not removed and not done and due between ${from}::date and ${from}::date + ${days}::int order by due`;
+    // withDone: 끝낸 할 일도 돌려준다(화면에서 줄을 그어 보여 줌). 이 값을 안 보내는 화면은 예전처럼 안 끝난 것만 받는다.
+    const tasks = await sql`select id, title, owner, to_char(due, 'YYYY-MM-DD') as due, done from portal.task
+      where project_key = ${key} and not removed ${b.withDone ? sql`` : sql`and not done`} and due between ${from}::date and ${from}::date + ${days}::int order by due`;
     const [p] = await sql`select cal_synced_at from portal.project where key = ${key}`;
     return { status: 200, body: { events, dues, tasks, syncedAt: p.cal_synced_at } };
   }
@@ -95,7 +139,7 @@ export async function calendarAction(sql: Sql, key: string, me: string, action: 
     const cardId = await cardFromEvent(sql, key, me, title, String(date), "일정에서 만든 카드" + (allDay ? "" : ` (${b.start})`) + (b.location ? ` · ${clip(b.location, 200)}` : ""));
     await sql`update portal.cal_event set board_item_id = ${cardId} where id = ${ev.id}`;
     await pushItems(sql, key, me, [cardId]);
-    return calendarAction(sql, key, me, "calendar.list", { from: b.listFrom, days: b.listDays }, today);
+    return calendarAction(sql, key, me, "calendar.list", { from: b.listFrom, days: b.listDays, withDone: b.withDone }, today);
   }
   return { status: 400, body: { error: "UNKNOWN_ACTION" } };
 }
@@ -129,8 +173,8 @@ export async function calendarSync(sql: Sql, key: string, b: Record<string, unkn
       toPush.push(cardId);
     }
   }
-  // 다른 경로로 들어온 할 일(기한 있음)도 5분마다 보드 카드로 맞춘다.
-  toPush.push(...await linkTasks(sql, key, "checklist"));
+  // 다른 경로로 들어온 할 일(기한 있음)도 5분마다 보드 카드로 맞춘다. 한 번에 10개씩(GitHub 올리기가 함수 시간 안에 끝나게).
+  toPush.push(...await linkTasks(sql, key, "checklist", undefined, 10));
   await pushItems(sql, key, "google-calendar", toPush);
   // 받은 기간 안에 있었는데 이번에 안 온 일정은 구글에서 지워진 것이다.
   await sql`update portal.cal_event set deleted = true, updated_at = now() where project_key = ${key} and gcal_id is not null and not deleted
