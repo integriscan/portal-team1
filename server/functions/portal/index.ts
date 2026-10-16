@@ -3,7 +3,7 @@
 import postgres from "npm:postgres@3.4.4";
 import { boardAction, githubReady } from "./board.ts";
 import { checkKey, ingest, meetingAction } from "./meeting.ts";
-import { calendarAction, calendarSync, expenseAction, taskAction } from "./work.ts";
+import { calendarAction, calendarSync, expenseAction, taskAction, tasksFromLog } from "./work.ts";
 import { teamAction } from "./team.ts";
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 2, idle_timeout: 20 });
@@ -222,9 +222,12 @@ Deno.serve(async (req) => {
     if (action === "log.save") {
       const did = text(b.did), next = text(b.next);
       if (!did || !next) return reply(origin, 422, { error: "REQUIRED" });
+      const day = logDay();
       await sql`insert into portal.daily_log (project_key, author, log_date, did, why, good, regret, next)
-        values (${s.project}, ${me}, ${logDay()}, ${did}, ${text(b.why)}, ${text(b.good)}, ${text(b.regret)}, ${next})
+        values (${s.project}, ${me}, ${day}, ${did}, ${text(b.why)}, ${text(b.good)}, ${text(b.regret)}, ${next})
         on conflict (project_key, author, log_date) do update set did = excluded.did, why = excluded.why, good = excluded.good, regret = excluded.regret, next = excluded.next, updated_at = now()`;
+      // '내일 할 일'을 체크리스트·보드·일정으로 보낸다. 실패해도 기록 저장은 성공으로 돌려준다.
+      try { await tasksFromLog(sql, s.project, me, day, next); } catch (e) { console.error("log tasks", (e as Error).message); }
       return reply(origin, 200, await bootstrap(s.project, s.isAdmin, me));
     }
 
