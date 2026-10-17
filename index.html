@@ -152,12 +152,16 @@
   var sub = location.hostname.split(".")[0];
   var project = PROJECTS[sub] || PROJECTS[new URLSearchParams(location.search).get("p")] || PROJECTS.orderless;
 
+  // 하루 기록 = 1000.school 일간 스니펫 양식 8칸(결정 117). 저장한 그대로 스니펫으로 옮겨 올린다.
   var DAILY = [
-    { key: "did", label: "오늘 한 일", required: true },
-    { key: "why", label: "목적", hint: "왜 했는지" },
-    { key: "good", label: "잘된 것" },
-    { key: "regret", label: "아쉬운 것" },
-    { key: "next", label: "내일 할 일", required: true }
+    { key: "did", label: "오늘 한 일", required: true, hint: "무엇을 했고 결과가 어땠는지" },
+    { key: "why", label: "수행 목적", hint: "왜 했는지" },
+    { key: "good", label: "하이라이트", hint: "잘된 것과 그 이유" },
+    { key: "regret", label: "로우라이트", hint: "아쉬운 것과 왜 그랬는지" },
+    { key: "next", label: "내일의 우선순위", required: true, hint: "줄마다 하나씩. 할 일·보드·일정에 들어갑니다" },
+    { key: "contribution", label: "오늘 내가 팀에 기여한 가치" },
+    { key: "learning", label: "오늘의 배움 또는 남길 말", hint: "다음엔 어떻게 할지" },
+    { key: "health", label: "헬스 체크 (10점)", hint: "점수와 한 줄 이유" }
   ];
   var WEEKLY = [
     { key: "did", label: "이번 주 한 일", required: true },
@@ -352,7 +356,7 @@
     var head = el("h2", { text: "오늘 할 일" });
     var toggle = el("button", { class: "btn small ghost", type: "button", text: all ? "내 것만" : "팀 전체", onclick: function () { all = !all; local.set("tasksAll", all ? "1" : null); toggle.textContent = all ? "내 것만" : "팀 전체"; draw(); } });
     card.appendChild(el("div", { class: "row", style: "justify-content:space-between" }, [head, el("div", { class: "row" }, [toggle])]));
-    card.appendChild(el("p", { class: "sub", text: "적고 Enter를 누르면 보드와 일정에도 생깁니다. 기한을 안 고르면 오늘입니다. 하루 기록의 '내일 할 일'도 저장하면 다음 날 기한으로 여기와 보드·일정에 들어옵니다. 끝내면 체크하고, 안 끝난 일은 내일로 넘어갑니다." }));
+    card.appendChild(el("p", { class: "sub", text: "적고 Enter를 누르면 보드와 일정에도 생깁니다. 기한을 안 고르면 오늘입니다. 하루 기록의 '내일의 우선순위'도 저장하면 다음 날 기한으로 여기와 보드·일정에 들어옵니다. 끝내면 체크하고, 안 끝난 일은 내일로 넘어갑니다." }));
     card.appendChild(list);
     card.appendChild(el("div", { class: "addrow" }, [title, owner, due, el("button", { class: "btn small", type: "button", text: "추가", onclick: add })]));
     card.appendChild(msg);
