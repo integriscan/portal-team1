@@ -105,7 +105,7 @@ async function bootstrap(project: string, isAdmin: boolean, me: string) {
   const week = mondayOf(today);
   const [p] = await sql`select key, name, calendar_url, admin_hash is not null as admin_set, ingest_hash is not null as ingest_set from portal.project where key = ${project}`;
   const members = await sql`select name from portal.member where project_key = ${project} and is_active and pass_hash is not null order by sort_order, id`;
-  const todays = await sql`select author, did, why, good, regret, next, updated_at from portal.daily_log where project_key = ${project} and log_date = ${day} order by updated_at`;
+  const todays = await sql`select author, did, why, good, regret, next, contribution, learning, health, updated_at from portal.daily_log where project_key = ${project} and log_date = ${day} order by updated_at`;
   const recent = await sql`select author, to_char(log_date, 'YYYY-MM-DD') as d from portal.daily_log where project_key = ${project} and log_date > ${addDays(today, -200)}`;
   const weekly = await sql`select author from portal.weekly_review where project_key = ${project} and week_start = ${week}`;
   const byAuthor = new Map<string, Set<string>>();
@@ -223,9 +223,11 @@ Deno.serve(async (req) => {
       const did = text(b.did), next = text(b.next);
       if (!did || !next) return reply(origin, 422, { error: "REQUIRED" });
       const day = logDay();
-      await sql`insert into portal.daily_log (project_key, author, log_date, did, why, good, regret, next)
-        values (${s.project}, ${me}, ${day}, ${did}, ${text(b.why)}, ${text(b.good)}, ${text(b.regret)}, ${next})
-        on conflict (project_key, author, log_date) do update set did = excluded.did, why = excluded.why, good = excluded.good, regret = excluded.regret, next = excluded.next, updated_at = now()`;
+      // 1000.school 일간 스니펫 양식 8칸(결정 117): 오늘 한 일, 수행 목적, 하이라이트, 로우라이트, 내일의 우선순위, 팀 기여, 배움, 헬스 체크.
+      await sql`insert into portal.daily_log (project_key, author, log_date, did, why, good, regret, next, contribution, learning, health)
+        values (${s.project}, ${me}, ${day}, ${did}, ${text(b.why)}, ${text(b.good)}, ${text(b.regret)}, ${next}, ${text(b.contribution)}, ${text(b.learning)}, ${text(b.health)})
+        on conflict (project_key, author, log_date) do update set did = excluded.did, why = excluded.why, good = excluded.good, regret = excluded.regret, next = excluded.next,
+          contribution = excluded.contribution, learning = excluded.learning, health = excluded.health, updated_at = now()`;
       // '내일 할 일'을 체크리스트·보드·일정으로 보낸다. 실패해도 기록 저장은 성공으로 돌려준다.
       try { await tasksFromLog(sql, s.project, me, day, next); } catch (e) { console.error("log tasks", (e as Error).message); }
       return reply(origin, 200, await bootstrap(s.project, s.isAdmin, me));
@@ -233,7 +235,7 @@ Deno.serve(async (req) => {
 
     if (action === "log.history") {
       const author = text(b.author);
-      const rows = await sql`select author, to_char(log_date, 'YYYY-MM-DD') as date, did, why, good, regret, next from portal.daily_log
+      const rows = await sql`select author, to_char(log_date, 'YYYY-MM-DD') as date, did, why, good, regret, next, contribution, learning, health from portal.daily_log
         where project_key = ${s.project} and log_date > ${addDays(today, -90)} ${author ? sql`and author = ${author}` : sql``}
         order by log_date desc, updated_at limit 300`;
       return reply(origin, 200, { logs: rows });
